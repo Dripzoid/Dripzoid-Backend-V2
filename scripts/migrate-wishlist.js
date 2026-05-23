@@ -1,0 +1,197 @@
+import sqlite3 from "sqlite3";
+import { open } from "sqlite";
+import { PrismaClient } from "@prisma/client";
+
+const prisma = new PrismaClient();
+
+/* ======================================================
+   HELPERS
+====================================================== */
+
+function generateSlug(name) {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
+}
+
+/* ======================================================
+   MIGRATION
+====================================================== */
+
+async function migrateWishlist() {
+  console.log(
+    "🚀 Starting wishlist migration..."
+  );
+
+  const sqliteDb = await open({
+    filename: "./src/data/dripzoid.db",
+    driver: sqlite3.Database,
+  });
+
+  /* =========================================
+     FETCH DATA
+  ========================================= */
+
+  const wishlistItems =
+    await sqliteDb.all(`
+      SELECT *
+      FROM wishlist_items
+    `);
+
+  console.log(
+    `📦 Found ${wishlistItems.length} wishlist items`
+  );
+
+  /* =========================================
+     PRELOAD PRODUCTS
+  ========================================= */
+
+  const products =
+    await prisma.product.findMany();
+
+  const productMap = new Map();
+
+  for (const product of products) {
+    productMap.set(
+      product.slug,
+      product.id
+    );
+  }
+
+  /* =========================================
+     PRELOAD USERS
+  ========================================= */
+
+  const users =
+    await prisma.user.findMany();
+
+  const userMap = new Map();
+
+  for (const user of users) {
+    userMap.set(user.email, user.id);
+  }
+
+  let migrated = 0;
+  let skipped = 0;
+
+  for (const item of wishlistItems) {
+    try {
+      /* =====================================
+         OLD USER
+      ===================================== */
+
+      const oldUser =
+        await sqliteDb.get(
+          `
+          SELECT *
+          FROM users
+          WHERE id = ?
+        `,
+          [item.user_id]
+        );
+
+      if (!oldUser) {
+        skipped++;
+        continue;
+      }
+
+      const newUserId =
+        userMap.get(oldUser.email);
+
+      if (!newUserId) {
+        skipped++;
+        continue;
+      }
+
+      /* =====================================
+         OLD PRODUCT
+      ===================================== */
+
+      const oldProduct =
+        await sqliteDb.get(
+          `
+          SELECT *
+          FROM products
+          WHERE id = ?
+        `,
+          [item.product_id]
+        );
+
+      if (!oldProduct) {
+        skipped++;
+        continue;
+      }
+
+      const slug =
+        `${generateSlug(oldProduct.name)}-${oldProduct.id}`;
+
+      const newProductId =
+        productMap.get(slug);
+
+      if (!newProductId) {
+        skipped++;
+        continue;
+      }
+
+      /* =====================================
+         DUPLICATE CHECK
+      ===================================== */
+
+      const existing =
+        await prisma.wishlistItem.findFirst({
+          where: {
+            userId: newUserId,
+            productId: newProductId,
+          },
+        });
+
+      if (existing) {
+        skipped++;
+        continue;
+      }
+
+      /* =====================================
+         CREATE
+      ===================================== */
+
+      await prisma.wishlistItem.create({
+        data: {
+          userId: newUserId,
+
+          productId: newProductId,
+
+          createdAt:
+            item.created_at
+              ? new Date(
+                  item.created_at
+                )
+              : new Date(),
+        },
+      });
+
+      migrated++;
+
+      console.log(
+        `✅ Wishlist migrated`
+      );
+    } catch (error) {
+      console.error(
+        `❌ Failed wishlist ${item.id}`,
+        error.message
+      );
+    }
+  }
+
+  console.log("\n====================");
+  console.log(`✅ Migrated: ${migrated}`);
+  console.log(`⏭️ Skipped: ${skipped}`);
+  console.log("====================");
+
+  await sqliteDb.close();
+  await prisma.$disconnect();
+}
+
+migrateWishlist();

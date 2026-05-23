@@ -1,0 +1,27 @@
+export const SHIPROCKET_STATUS_MAP = {
+  NEW: "PLACED",
+
+  PICKUP_GENERATED:
+    "PROCESSING",
+
+  SHIPPED:
+    "SHIPPED",
+
+  OUT_FOR_DELIVERY:
+    "OUT_FOR_DELIVERY",
+
+  DELIVERED:
+    "DELIVERED",
+
+  RTO_INITIATED:
+    "RTO",
+
+  RTO_DELIVERED:
+    "RTO_DELIVERED",
+
+  CANCELED:
+    "CANCELLED",
+
+  NDR:
+    "NDR",
+};
