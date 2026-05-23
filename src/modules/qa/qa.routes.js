@@ -4,9 +4,18 @@ import {
   getQuestions,
   createQuestion,
   createAnswer,
+  updateQuestion,
+  deleteQuestion,
+  updateAnswer,
+  deleteAnswer,
 } from "./qa.controller.js";
 
-const router = express.Router();
+import {
+  authenticateToken,
+} from "../../middlewares/auth.middleware.js";
+
+const router =
+  express.Router();
 
 /* =========================================
    📦 GET QUESTIONS + ANSWERS
@@ -23,7 +32,28 @@ router.get(
 
 router.post(
   "/",
+  authenticateToken,
   createQuestion
+);
+
+/* =========================================
+   ✏️ UPDATE QUESTION
+========================================= */
+
+router.put(
+  "/:questionId",
+  authenticateToken,
+  updateQuestion
+);
+
+/* =========================================
+   ❌ DELETE QUESTION
+========================================= */
+
+router.delete(
+  "/:questionId",
+  authenticateToken,
+  deleteQuestion
 );
 
 /* =========================================
@@ -32,7 +62,28 @@ router.post(
 
 router.post(
   "/:questionId/answers",
+  authenticateToken,
   createAnswer
+);
+
+/* =========================================
+   ✏️ UPDATE ANSWER
+========================================= */
+
+router.put(
+  "/answers/:answerId",
+  authenticateToken,
+  updateAnswer
+);
+
+/* =========================================
+   ❌ DELETE ANSWER
+========================================= */
+
+router.delete(
+  "/answers/:answerId",
+  authenticateToken,
+  deleteAnswer
 );
 
 export default router;
