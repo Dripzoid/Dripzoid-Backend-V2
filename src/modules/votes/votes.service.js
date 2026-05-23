@@ -1,6 +1,63 @@
 import prisma from "../../lib/prisma.js";
 
 /* =====================================================
+   🔥 ALLOWED ENTITY TYPES
+===================================================== */
+
+const ALLOWED_ENTITY_TYPES = [
+  "review",
+  "question",
+  "answer",
+];
+
+/* =====================================================
+   🔥 ALLOWED VOTES
+===================================================== */
+
+const ALLOWED_VOTES = [
+  "like",
+  "dislike",
+  "none",
+];
+
+/* =====================================================
+   🔥 VALIDATE ENTITY EXISTS
+===================================================== */
+
+async function validateEntityExists({
+  entityType,
+  entityId,
+}) {
+  switch (entityType) {
+    case "review": {
+      const review =
+        await prisma.review.findUnique({
+          where: {
+            id: entityId,
+          },
+
+          select: {
+            id: true,
+          },
+        });
+
+      if (!review) {
+        throw new Error(
+          "Review not found"
+        );
+      }
+
+      break;
+    }
+
+    default:
+      throw new Error(
+        "Unsupported entity type"
+      );
+  }
+}
+
+/* =====================================================
    🔥 SUBMIT VOTE
 ===================================================== */
 
@@ -24,15 +81,18 @@ export async function submitVoteService({
     );
   }
 
-  const allowedVotes =
-    [
-      "like",
-      "dislike",
-      "none",
-    ];
+  if (
+    !ALLOWED_ENTITY_TYPES.includes(
+      entityType
+    )
+  ) {
+    throw new Error(
+      "Invalid entity type"
+    );
+  }
 
   if (
-    !allowedVotes.includes(
+    !ALLOWED_VOTES.includes(
       vote
     )
   ) {
@@ -42,6 +102,15 @@ export async function submitVoteService({
   }
 
   /* =========================
+     VALIDATE ENTITY EXISTS
+  ========================= */
+
+  await validateEntityExists({
+    entityId,
+    entityType,
+  });
+
+  /* =========================
      CHECK EXISTING VOTE
   ========================= */
 
@@ -49,80 +118,53 @@ export async function submitVoteService({
     await prisma.vote.findFirst({
       where: {
         entityId,
-
         entityType,
-
         userId,
       },
     });
-
-  /* =========================
-     INSERT VOTE
-  ========================= */
-
-  if (
-    !existingVote &&
-    vote !== "none"
-  ) {
-    await prisma.vote.create({
-      data: {
-        entityId,
-
-        entityType,
-
-        userId,
-
-        vote,
-      },
-    });
-
-    return {
-      success: true,
-
-      action:
-        "inserted",
-    };
-  }
 
   /* =========================
      REMOVE VOTE
   ========================= */
 
-  if (
-    existingVote &&
-    vote === "none"
-  ) {
-    await prisma.vote.delete({
-      where: {
-        id:
-          existingVote.id,
-      },
-    });
+  if (vote === "none") {
+    if (existingVote) {
+      await prisma.vote.delete({
+        where: {
+          id:
+            existingVote.id,
+        },
+      });
+
+      return {
+        success: true,
+
+        action:
+          "removed",
+
+        vote: "none",
+      };
+    }
 
     return {
       success: true,
 
-      action:
-        "removed",
+      action: "noop",
+
+      vote: "none",
     };
   }
 
   /* =========================
-     UPDATE VOTE
+     CREATE NEW VOTE
   ========================= */
 
-  if (
-    existingVote &&
-    existingVote.vote !==
-      vote
-  ) {
-    await prisma.vote.update({
-      where: {
-        id:
-          existingVote.id,
-      },
-
+  if (!existingVote) {
+    await prisma.vote.create({
       data: {
+        entityId,
+        entityType,
+        userId,
         vote,
       },
     });
@@ -131,7 +173,9 @@ export async function submitVoteService({
       success: true,
 
       action:
-        "updated",
+        "created",
+
+      vote,
     };
   }
 
@@ -139,10 +183,40 @@ export async function submitVoteService({
      NO CHANGES
   ========================= */
 
+  if (
+    existingVote.vote ===
+    vote
+  ) {
+    return {
+      success: true,
+
+      action: "noop",
+
+      vote,
+    };
+  }
+
+  /* =========================
+     UPDATE VOTE
+  ========================= */
+
+  await prisma.vote.update({
+    where: {
+      id: existingVote.id,
+    },
+
+    data: {
+      vote,
+    },
+  });
+
   return {
     success: true,
 
-    action: "noop",
+    action:
+      "updated",
+
+    vote,
   };
 }
 
@@ -164,6 +238,20 @@ export async function getVotesService({
   ) {
     return {};
   }
+
+  if (
+    !ALLOWED_ENTITY_TYPES.includes(
+      entityType
+    )
+  ) {
+    throw new Error(
+      "Invalid entity type"
+    );
+  }
+
+  /* =========================
+     NORMALIZE IDS
+  ========================= */
 
   const ids =
     String(entityIds)
@@ -193,7 +281,6 @@ export async function getVotesService({
 
       select: {
         entityId: true,
-
         vote: true,
       },
     });
@@ -204,23 +291,18 @@ export async function getVotesService({
 
   const result = {};
 
-  votes.forEach((vote) => {
-    if (
-      !result[
-        vote.entityId
-      ]
-    ) {
-      result[
-        vote.entityId
-      ] = {
-        like: 0,
-        dislike: 0,
-      };
-    }
+  // initialize all ids
+  ids.forEach((id) => {
+    result[id] = {
+      like: 0,
+      dislike: 0,
+      total: 0,
+    };
+  });
 
+  for (const vote of votes) {
     if (
-      vote.vote ===
-      "like"
+      vote.vote === "like"
     ) {
       result[
         vote.entityId
@@ -235,7 +317,11 @@ export async function getVotesService({
         vote.entityId
       ].dislike += 1;
     }
-  });
+
+    result[
+      vote.entityId
+    ].total += 1;
+  }
 
   return result;
 }
