@@ -5,19 +5,47 @@ import prisma from "../../lib/prisma.js";
 ===================================================== */
 
 function getISTDateTime() {
-  const now =
-    new Date();
+  const now = new Date();
 
   const istOffset =
-    5.5 *
-    60 *
-    60 *
-    1000;
+    5.5 * 60 * 60 * 1000;
 
   return new Date(
     now.getTime() +
       istOffset
   );
+}
+
+/* =====================================================
+   🔄 RECALCULATE PRODUCT RATING
+===================================================== */
+
+async function recalculateProductRating(
+  productId
+) {
+  const aggregate =
+    await prisma.review.aggregate({
+      where: {
+        productId,
+      },
+
+      _avg: {
+        rating: true,
+      },
+    });
+
+  await prisma.product.update({
+    where: {
+      id: productId,
+    },
+
+    data: {
+      rating: Number(
+        aggregate._avg.rating ||
+          0
+      ),
+    },
+  });
 }
 
 /* =====================================================
@@ -27,10 +55,6 @@ function getISTDateTime() {
 export async function getProductReviewsService(
   productId
 ) {
-  /* =========================
-     FETCH REVIEWS
-  ========================= */
-
   const reviews =
     await prisma.review.findMany({
       where: {
@@ -45,6 +69,7 @@ export async function getProductReviewsService(
       include: {
         user: {
           select: {
+            id: true,
             name: true,
           },
         },
@@ -53,14 +78,9 @@ export async function getProductReviewsService(
       },
     });
 
-  /* =========================
-     FORMAT RESPONSE
-  ========================= */
-
   return reviews.map(
     (review) => ({
-      id:
-        review.id,
+      id: review.id,
 
       productId:
         review.productId,
@@ -84,8 +104,7 @@ export async function getProductReviewsService(
         review.updatedAt,
 
       userName:
-        review.user
-          ?.name ||
+        review.user?.name ||
         "Unknown User",
 
       likes:
@@ -121,6 +140,7 @@ export async function getReviewByIdService(
       include: {
         user: {
           select: {
+            id: true,
             name: true,
           },
         },
@@ -135,13 +155,8 @@ export async function getReviewByIdService(
     );
   }
 
-  /* =========================
-     FORMAT RESPONSE
-  ========================= */
-
   return {
-    id:
-      review.id,
+    id: review.id,
 
     productId:
       review.productId,
@@ -165,8 +180,7 @@ export async function getReviewByIdService(
       review.updatedAt,
 
     userName:
-      review.user
-        ?.name ||
+      review.user?.name ||
       "Unknown User",
 
     likes:
@@ -228,6 +242,24 @@ export async function createReviewService({
   }
 
   /* =========================
+     PREVENT DUPLICATE REVIEW
+  ========================= */
+
+  const existingReview =
+    await prisma.review.findFirst({
+      where: {
+        productId,
+        userId,
+      },
+    });
+
+  if (existingReview) {
+    throw new Error(
+      "You already reviewed this product"
+    );
+  }
+
+  /* =========================
      CREATE REVIEW
   ========================= */
 
@@ -239,9 +271,7 @@ export async function createReviewService({
         userId,
 
         rating:
-          Number(
-            rating
-          ),
+          Number(rating),
 
         text:
           text?.trim() ||
@@ -253,6 +283,9 @@ export async function createReviewService({
 
         createdAt:
           getISTDateTime(),
+
+        updatedAt:
+          getISTDateTime(),
       },
     });
 
@@ -260,34 +293,12 @@ export async function createReviewService({
      UPDATE PRODUCT RATING
   ========================= */
 
-  const aggregate =
-    await prisma.review.aggregate({
-      where: {
-        productId,
-      },
-
-      _avg: {
-        rating: true,
-      },
-    });
-
-  await prisma.product.update({
-    where: {
-      id: productId,
-    },
-
-    data: {
-      rating:
-        Number(
-          aggregate._avg
-            .rating || 0
-        ),
-    },
-  });
+  await recalculateProductRating(
+    productId
+  );
 
   return {
-    id:
-      review.id,
+    id: review.id,
 
     createdAt:
       review.createdAt,
@@ -295,28 +306,129 @@ export async function createReviewService({
 }
 
 /* =====================================================
-   ❌ DELETE REVIEW
+   ✏️ UPDATE REVIEW
 ===================================================== */
 
-export async function deleteReviewService(
-  id
-) {
+export async function updateReviewService({
+  reviewId,
+  userId,
+  rating,
+  text,
+  imageUrl,
+}) {
   /* =========================
-     CHECK REVIEW
+     FIND REVIEW
   ========================= */
 
   const existingReview =
     await prisma.review.findUnique({
       where: {
-        id,
+        id: reviewId,
       },
     });
 
-  if (
-    !existingReview
-  ) {
+  if (!existingReview) {
     throw new Error(
       "Review not found"
+    );
+  }
+
+  /* =========================
+     OWNERSHIP VALIDATION
+  ========================= */
+
+  if (
+    String(
+      existingReview.userId
+    ) !== String(userId)
+  ) {
+    throw new Error(
+      "Unauthorized"
+    );
+  }
+
+  /* =========================
+     UPDATE REVIEW
+  ========================= */
+
+  const updatedReview =
+    await prisma.review.update({
+      where: {
+        id: reviewId,
+      },
+
+      data: {
+        ...(rating !==
+          undefined && {
+          rating:
+            Number(rating),
+        }),
+
+        ...(text !==
+          undefined && {
+          text:
+            text?.trim(),
+        }),
+
+        ...(imageUrl !==
+          undefined && {
+          imageUrl:
+            imageUrl ||
+            null,
+        }),
+
+        updatedAt:
+          getISTDateTime(),
+      },
+    });
+
+  /* =========================
+     RECALCULATE PRODUCT RATING
+  ========================= */
+
+  await recalculateProductRating(
+    existingReview.productId
+  );
+
+  return updatedReview;
+}
+
+/* =====================================================
+   ❌ DELETE REVIEW
+===================================================== */
+
+export async function deleteReviewService({
+  reviewId,
+  userId,
+}) {
+  /* =========================
+     FIND REVIEW
+  ========================= */
+
+  const existingReview =
+    await prisma.review.findUnique({
+      where: {
+        id: reviewId,
+      },
+    });
+
+  if (!existingReview) {
+    throw new Error(
+      "Review not found"
+    );
+  }
+
+  /* =========================
+     OWNERSHIP VALIDATION
+  ========================= */
+
+  if (
+    String(
+      existingReview.userId
+    ) !== String(userId)
+  ) {
+    throw new Error(
+      "Unauthorized"
     );
   }
 
@@ -329,38 +441,17 @@ export async function deleteReviewService(
 
   await prisma.review.delete({
     where: {
-      id,
+      id: reviewId,
     },
   });
 
   /* =========================
-     RECALCULATE RATING
+     RECALCULATE PRODUCT RATING
   ========================= */
 
-  const aggregate =
-    await prisma.review.aggregate({
-      where: {
-        productId,
-      },
-
-      _avg: {
-        rating: true,
-      },
-    });
-
-  await prisma.product.update({
-    where: {
-      id: productId,
-    },
-
-    data: {
-      rating:
-        Number(
-          aggregate._avg
-            .rating || 0
-        ),
-    },
-  });
+  await recalculateProductRating(
+    productId
+  );
 
   return true;
 }
