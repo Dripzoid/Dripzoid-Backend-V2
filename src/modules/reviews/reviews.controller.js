@@ -2,10 +2,14 @@ import {
   getProductReviewsService,
   getReviewByIdService,
   createReviewService,
+  updateReviewService,
   deleteReviewService,
 } from "./reviews.service.js";
 
-// 📦 GET PRODUCT REVIEWS
+/* =========================================
+   📦 GET PRODUCT REVIEWS
+========================================= */
+
 export const getProductReviews =
   async (req, res) => {
     try {
@@ -15,6 +19,7 @@ export const getProductReviews =
         );
 
       res.json(data);
+
     } catch (err) {
       console.error(
         "getProductReviews error:",
@@ -22,6 +27,7 @@ export const getProductReviews =
       );
 
       res.status(500).json({
+        success: false,
         error:
           err.message ||
           "Failed to fetch reviews",
@@ -29,7 +35,10 @@ export const getProductReviews =
     }
   };
 
-// 📦 GET SINGLE REVIEW
+/* =========================================
+   📦 GET SINGLE REVIEW
+========================================= */
+
 export const getReviewById =
   async (req, res) => {
     try {
@@ -39,6 +48,7 @@ export const getReviewById =
         );
 
       res.json(data);
+
     } catch (err) {
       console.error(
         "getReviewById error:",
@@ -46,6 +56,7 @@ export const getReviewById =
       );
 
       res.status(404).json({
+        success: false,
         error:
           err.message ||
           "Review not found",
@@ -53,27 +64,48 @@ export const getReviewById =
     }
   };
 
-// ➕ CREATE REVIEW
+/* =========================================
+   ➕ CREATE REVIEW
+========================================= */
+
 export const createReview =
   async (req, res) => {
     try {
       const {
         productId,
-        userId,
         rating,
         text,
         imageUrl,
       } = req.body;
 
-      // validation
+      // authenticated user
+      const userId =
+        req.user?.id;
+
+      /* =========================
+         VALIDATION
+      ========================= */
+
       if (
         !productId ||
-        !userId ||
         !rating
       ) {
         return res.status(400).json({
+          success: false,
           error:
-            "productId, userId and rating are required",
+            "productId and rating are required",
+        });
+      }
+
+      // rating validation
+      if (
+        rating < 1 ||
+        rating > 5
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Rating must be between 1 and 5",
         });
       }
 
@@ -86,7 +118,11 @@ export const createReview =
           imageUrl,
         });
 
-      res.status(201).json(data);
+      res.status(201).json({
+        success: true,
+        data,
+      });
+
     } catch (err) {
       console.error(
         "createReview error:",
@@ -94,6 +130,7 @@ export const createReview =
       );
 
       res.status(500).json({
+        success: false,
         error:
           err.message ||
           "Failed to create review",
@@ -101,29 +138,104 @@ export const createReview =
     }
   };
 
-// ❌ DELETE REVIEW
+/* =========================================
+   ✏️ UPDATE REVIEW
+========================================= */
+
+export const updateReview =
+  async (req, res) => {
+    try {
+      const reviewId =
+        req.params.id;
+
+      const {
+        rating,
+        text,
+        imageUrl,
+      } = req.body;
+
+      const userId =
+        req.user?.id;
+
+      /* =========================
+         VALIDATION
+      ========================= */
+
+      if (
+        rating &&
+        (rating < 1 || rating > 5)
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Rating must be between 1 and 5",
+        });
+      }
+
+      const data =
+        await updateReviewService({
+          reviewId,
+          userId,
+          rating,
+          text,
+          imageUrl,
+        });
+
+      res.json({
+        success: true,
+        data,
+      });
+
+    } catch (err) {
+      console.error(
+        "updateReview error:",
+        err
+      );
+
+      res.status(500).json({
+        success: false,
+        error:
+          err.message ||
+          "Failed to update review",
+      });
+    }
+  };
+
+/* =========================================
+   ❌ DELETE REVIEW
+========================================= */
+
 export const deleteReview =
   async (req, res) => {
     try {
-      await deleteReviewService(
-        req.params.id
-      );
+      const reviewId =
+        req.params.id;
+
+      const userId =
+        req.user?.id;
+
+      await deleteReviewService({
+        reviewId,
+        userId,
+      });
 
       res.json({
         success: true,
         message:
-          "Review deleted",
+          "Review deleted successfully",
       });
+
     } catch (err) {
       console.error(
         "deleteReview error:",
         err
       );
 
-      res.status(404).json({
+      res.status(500).json({
+        success: false,
         error:
           err.message ||
-          "Review not found",
+          "Failed to delete review",
       });
     }
   };
