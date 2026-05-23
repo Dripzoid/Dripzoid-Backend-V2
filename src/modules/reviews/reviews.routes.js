@@ -4,8 +4,13 @@ import {
   getProductReviews,
   getReviewById,
   createReview,
+  updateReview,
   deleteReview,
 } from "./reviews.controller.js";
+
+import {
+  authenticateToken,
+} from "../../middlewares/auth.middleware.js";
 
 const router = express.Router();
 
@@ -33,7 +38,18 @@ router.get(
 
 router.post(
   "/",
+  authenticateToken,
   createReview
+);
+
+/* =========================================
+   ✏️ UPDATE REVIEW
+========================================= */
+
+router.put(
+  "/:id",
+  authenticateToken,
+  updateReview
 );
 
 /* =========================================
@@ -42,6 +58,7 @@ router.post(
 
 router.delete(
   "/:id",
+  authenticateToken,
   deleteReview
 );
 
