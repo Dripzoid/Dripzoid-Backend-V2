@@ -18,7 +18,12 @@ export async function getProductsService(
     maxPrice = 999999,
     limit = 20,
     search,
+    slug,
   } = query;
+
+  /* =========================
+     BASE FILTER
+  ========================= */
 
   const where = {
     price: {
@@ -33,18 +38,17 @@ export async function getProductsService(
   };
 
   /* =========================
-     CATEGORY FILTER
+     CATEGORY RELATION FILTER
   ========================= */
 
   if (category) {
     where.category = {
-      category:
-        String(category)
-          .charAt(0)
-          .toUpperCase() +
-        String(category)
-          .slice(1)
-          .toLowerCase(),
+      is: {
+        category:
+          String(category)
+            .trim()
+            .toLowerCase(),
+      },
     };
   }
 
@@ -54,17 +58,44 @@ export async function getProductsService(
 
   if (subcategory) {
     where.category = {
-      ...(where.category ||
-        {}),
+      is: {
+        ...(where.category?.is ||
+          {}),
 
-      subcategory: {
-        equals:
-          String(
-            subcategory
-          ),
+        subcategory: {
+          equals:
+            String(
+              subcategory
+            )
+              .trim()
+              .toLowerCase(),
 
-        mode:
-          "insensitive",
+          mode:
+            "insensitive",
+        },
+      },
+    };
+  }
+
+  /* =========================
+     CATEGORY SLUG FILTER
+  ========================= */
+
+  if (slug) {
+    where.category = {
+      is: {
+        ...(where.category?.is ||
+          {}),
+
+        slug: {
+          equals:
+            String(slug)
+              .trim()
+              .toLowerCase(),
+
+          mode:
+            "insensitive",
+        },
       },
     };
   }
@@ -92,6 +123,30 @@ export async function getProductsService(
 
           mode:
             "insensitive",
+        },
+      },
+
+      {
+        subcategory: {
+          contains:
+            String(search),
+
+          mode:
+            "insensitive",
+        },
+      },
+
+      {
+        category: {
+          is: {
+            subcategory: {
+              contains:
+                String(search),
+
+              mode:
+                "insensitive",
+            },
+          },
         },
       },
     ];
@@ -126,6 +181,10 @@ export async function getProductsService(
           }
         : {}),
     });
+
+  /* =========================
+     FORMAT RESPONSE
+  ========================= */
 
   return Promise.all(
     products.map(
