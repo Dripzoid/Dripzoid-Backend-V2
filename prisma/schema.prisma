@@ -38,6 +38,9 @@ enum CategoryType {
   Men
   Women
   Kids
+  men
+  women
+  kids
 }
 
 enum CategoryStatus {
