@@ -30,7 +30,7 @@ const upload = multer({
 
 router.get(
   "/export-db",
-  requireAdminAuth,
+  adminAuth,
   exportDatabase
 );
 
@@ -40,7 +40,7 @@ router.get(
 
 router.post(
   "/import-db",
-  requireAdminAuth,
+  adminAuth,
   upload.single("sqlfile"),
   importDatabase
 );
