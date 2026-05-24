@@ -31,7 +31,7 @@ export function authenticateToken(req, res, next) {
     }
 
     const payload = jwt.verify(token, JWT_SECRET);
-
+    console.log(payload);
     req.user = payload;
     req.token = token;
     req.sessionId =
