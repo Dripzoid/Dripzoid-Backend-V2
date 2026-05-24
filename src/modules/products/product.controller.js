@@ -3,6 +3,8 @@ import {
   getFeaturedProductsService,
   getTrendingProductsService,
   getProductByIdService,
+  getCategoriesService,
+  getRelatedProductsService,
 } from "./product.service.js";
 
 /* =====================================================
@@ -35,8 +37,7 @@ export const getProducts =
         success: false,
 
         message:
-          error.message ||
-          "Failed to fetch products",
+          error.message,
       });
     }
   };
@@ -64,14 +65,14 @@ export const getProductById =
           });
       }
 
-      return res.status(200).json({
-        success: true,
+      /* =========================
+         OLD RESPONSE FORMAT
+      ========================= */
 
-        product,
-      });
+      return res.json(product);
     } catch (error) {
       console.error(
-        "❌ Get Product By ID Error:",
+        "❌ Product Error:",
         error
       );
 
@@ -79,8 +80,74 @@ export const getProductById =
         success: false,
 
         message:
-          error.message ||
-          "Failed to fetch product",
+          error.message,
+      });
+    }
+  };
+
+/* =====================================================
+   🔥 GET CATEGORIES
+===================================================== */
+
+export const getCategories =
+  async (req, res) => {
+    try {
+      const categories =
+        await getCategoriesService(
+          req.query
+        );
+
+      return res.status(200).json({
+        success: true,
+
+        categories,
+      });
+    } catch (error) {
+      console.error(
+        "❌ Categories Error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message,
+      });
+    }
+  };
+
+/* =====================================================
+   🔥 RELATED PRODUCTS
+===================================================== */
+
+export const getRelatedProducts =
+  async (req, res) => {
+    try {
+      const products =
+        await getRelatedProductsService(
+          req.params.id
+        );
+
+      return res.status(200).json({
+        success: true,
+
+        count:
+          products.length,
+
+        products,
+      });
+    } catch (error) {
+      console.error(
+        "❌ Related Products Error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message,
       });
     }
   };
@@ -104,17 +171,11 @@ export const getFeaturedProducts =
         products,
       });
     } catch (error) {
-      console.error(
-        "❌ Featured Products Error:",
-        error
-      );
-
       return res.status(500).json({
         success: false,
 
         message:
-          error.message ||
-          "Failed to fetch featured products",
+          error.message,
       });
     }
   };
@@ -138,17 +199,11 @@ export const getTrendingProducts =
         products,
       });
     } catch (error) {
-      console.error(
-        "❌ Trending Products Error:",
-        error
-      );
-
       return res.status(500).json({
         success: false,
 
         message:
-          error.message ||
-          "Failed to fetch trending products",
+          error.message,
       });
     }
   };
