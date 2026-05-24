@@ -25,7 +25,7 @@ import otpRoutes from "../modules/otp/otp.routes.js";
 import paymentRoutes from "../modules/payments/payment.routes.js";
 import addressRoutes from "../modules/address/address.routes.js";
 import accountRoutes from "../modules/account/account.routes.js";
-import backupRoutes from "./modules/admin/backup.routes.js";
+import backupRoutes from "../modules/admin/backup.routes.js";
 
 const router = express.Router();
 
