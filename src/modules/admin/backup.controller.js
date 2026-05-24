@@ -129,22 +129,6 @@ export const importDatabase = async (
 ) => {
   try {
     /* =========================
-       TOKEN VALIDATION
-    ========================= */
-
-    const uploadToken =
-      req.headers["x-upload-token"];
-
-    if (
-      uploadToken !==
-      process.env.UPLOAD_SECRET
-    ) {
-      return res.status(401).json({
-        message: "Unauthorized",
-      });
-    }
-
-    /* =========================
        FILE VALIDATION
     ========================= */
 
@@ -169,12 +153,6 @@ export const importDatabase = async (
     }
 
     /* =========================
-       DISCONNECT PRISMA
-    ========================= */
-
-    await prisma.$disconnect();
-
-    /* =========================
        RESTORE DATABASE
     ========================= */
 
@@ -183,21 +161,18 @@ export const importDatabase = async (
 
     exec(
       command,
-      async (error, stdout, stderr) => {
+      async (
+        error,
+        stdout,
+        stderr
+      ) => {
         /* =========================
            DELETE TEMP FILE
         ========================= */
 
         fs.unlink(
           filePath,
-          (unlinkError) => {
-            if (unlinkError) {
-              console.error(
-                "File cleanup error:",
-                unlinkError
-              );
-            }
-          }
+          () => {}
         );
 
         if (error) {
@@ -206,28 +181,14 @@ export const importDatabase = async (
             error
           );
 
-          return res
-            .status(500)
-            .json({
-              message:
-                "Database restore failed",
-              error:
-                stderr ||
-                error.message,
-            });
-        }
+          return res.status(500).json({
+            message:
+              "Database restore failed",
 
-        /* =========================
-           RECONNECT PRISMA
-        ========================= */
-
-        try {
-          await prisma.$connect();
-        } catch (connectError) {
-          console.error(
-            "Prisma reconnect error:",
-            connectError
-          );
+            error:
+              stderr ||
+              error.message,
+          });
         }
 
         return res.json({
@@ -239,7 +200,7 @@ export const importDatabase = async (
   } catch (error) {
     console.error(error);
 
-    res.status(500).json({
+    return res.status(500).json({
       message:
         "Failed to restore database",
     });
