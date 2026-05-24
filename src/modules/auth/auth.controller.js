@@ -104,8 +104,8 @@ export const register = async (
 
         email: user.email,
 
-        is_admin:
-          user.is_admin,
+        isAdmin:
+          user.isAdmin,
 
         sessionId,
       },
@@ -194,8 +194,8 @@ export const login = async (
 
         email: user.email,
 
-        is_admin:
-          user.is_admin,
+        isAdmin:
+          user.isAdmin,
 
         sessionId,
       },
@@ -299,8 +299,8 @@ export const googleCallback = [
 
           email: user.email,
 
-          is_admin:
-            user.is_admin,
+          isAdmin:
+            user.isAdmin,
 
           sessionId,
         },
