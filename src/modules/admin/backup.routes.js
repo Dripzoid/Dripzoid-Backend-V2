@@ -50,11 +50,11 @@ router.get(
 router.post(
   "/import-db",
 
+  upload.single("sqlfile"),
+
   authenticateToken,
 
   requireAdmin,
-
-  upload.single("sqlfile"),
 
   importDatabase
 );
