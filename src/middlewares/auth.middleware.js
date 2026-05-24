@@ -5,6 +5,9 @@ const JWT_SECRET = process.env.JWT_SECRET;
 // 🔐 Main Auth Middleware
 export function authenticateToken(req, res, next) {
   try {
+    console.log(
+      req.headers.authorization
+    );
     let token = null;
 
     // Authorization header
