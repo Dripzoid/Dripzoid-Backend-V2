@@ -25,6 +25,7 @@ import otpRoutes from "../modules/otp/otp.routes.js";
 import paymentRoutes from "../modules/payments/payment.routes.js";
 import addressRoutes from "../modules/address/address.routes.js";
 import accountRoutes from "../modules/account/account.routes.js";
+import backupRoutes from "./routes/admin/backup.routes.js";
 
 const router = express.Router();
 
@@ -34,6 +35,10 @@ router.use("/sessions", sessionRoutes);
 router.use("/orders", orderRoutes);
 router.use("/user/orders", userOrdersRoutes);
 router.use("/admin/orders", adminOrdersRoutes);
+router.use(
+  "/api/admin",
+  backupRoutes
+);
 router.use(
   "/admin/products",
   adminProductsRoutes
