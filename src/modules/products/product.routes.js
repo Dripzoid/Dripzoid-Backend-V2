@@ -5,6 +5,8 @@ import {
   getProductById,
   getFeaturedProducts,
   getTrendingProducts,
+  getCategories,
+  getRelatedProducts,
 } from "./product.controller.js";
 
 const router =
@@ -17,6 +19,24 @@ const router =
 router.get(
   "/products",
   getProducts
+);
+
+/* =====================================================
+   🔥 PRODUCT CATEGORIES
+===================================================== */
+
+router.get(
+  "/products/categories",
+  getCategories
+);
+
+/* =====================================================
+   🔥 RELATED PRODUCTS
+===================================================== */
+
+router.get(
+  "/products/:id/related",
+  getRelatedProducts
 );
 
 /* =====================================================
