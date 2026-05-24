@@ -1,13 +1,15 @@
 import express from "express";
 
-import authMiddleware from "../authAdmin.js";
+import multer from "multer";
+
+import {
+  requireAdminAuth,
+} from "../../middlewares/admin.middleware.js";
 
 import {
   exportDatabase,
   importDatabase,
-} from "../../controllers/admin/backup.controller.js";
-
-import multer from "multer";
+} from "./backup.controller.js";
 
 const router = express.Router();
 
@@ -18,7 +20,7 @@ const router = express.Router();
 const upload = multer({
   dest: "uploads/",
   limits: {
-    fileSize: 1024 * 1024 * 100, // 100MB
+    fileSize: 1024 * 1024 * 100,
   },
 });
 
@@ -28,7 +30,7 @@ const upload = multer({
 
 router.get(
   "/export-db",
-  authMiddleware,
+  requireAdminAuth,
   exportDatabase
 );
 
@@ -38,6 +40,7 @@ router.get(
 
 router.post(
   "/import-db",
+  requireAdminAuth,
   upload.single("sqlfile"),
   importDatabase
 );
