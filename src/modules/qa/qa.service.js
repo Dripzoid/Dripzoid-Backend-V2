@@ -55,8 +55,6 @@ export async function getQuestionsService(
                 name: true,
               },
             },
-
-            votes: true,
           },
         },
       },
