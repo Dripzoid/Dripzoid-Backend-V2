@@ -9,26 +9,37 @@ import {
    🔥 GET PRODUCTS
 ===================================================== */
 
-export const getProducts = async (
-  req,
-  res
-) => {
-  try {
-    const data =
-      await getProductsService(
-        req.query
+export const getProducts =
+  async (req, res) => {
+    try {
+      const products =
+        await getProductsService(
+          req.query
+        );
+
+      return res.status(200).json({
+        success: true,
+
+        count:
+          products.length,
+
+        products,
+      });
+    } catch (error) {
+      console.error(
+        "❌ Get Products Error:",
+        error
       );
 
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({
-      success: false,
+      return res.status(500).json({
+        success: false,
 
-      message:
-        err.message,
-    });
-  }
-};
+        message:
+          error.message ||
+          "Failed to fetch products",
+      });
+    }
+  };
 
 /* =====================================================
    🔥 GET PRODUCT BY ID
@@ -37,12 +48,12 @@ export const getProducts = async (
 export const getProductById =
   async (req, res) => {
     try {
-      const data =
+      const product =
         await getProductByIdService(
           req.params.id
         );
 
-      if (!data) {
+      if (!product) {
         return res
           .status(404)
           .json({
@@ -53,13 +64,23 @@ export const getProductById =
           });
       }
 
-      res.json(data);
-    } catch (err) {
-      res.status(500).json({
+      return res.status(200).json({
+        success: true,
+
+        product,
+      });
+    } catch (error) {
+      console.error(
+        "❌ Get Product By ID Error:",
+        error
+      );
+
+      return res.status(500).json({
         success: false,
 
         message:
-          err.message,
+          error.message ||
+          "Failed to fetch product",
       });
     }
   };
@@ -71,16 +92,29 @@ export const getProductById =
 export const getFeaturedProducts =
   async (req, res) => {
     try {
-      const data =
+      const products =
         await getFeaturedProductsService();
 
-      res.json(data);
-    } catch (err) {
-      res.status(500).json({
+      return res.status(200).json({
+        success: true,
+
+        count:
+          products.length,
+
+        products,
+      });
+    } catch (error) {
+      console.error(
+        "❌ Featured Products Error:",
+        error
+      );
+
+      return res.status(500).json({
         success: false,
 
         message:
-          err.message,
+          error.message ||
+          "Failed to fetch featured products",
       });
     }
   };
@@ -92,16 +126,29 @@ export const getFeaturedProducts =
 export const getTrendingProducts =
   async (req, res) => {
     try {
-      const data =
+      const products =
         await getTrendingProductsService();
 
-      res.json(data);
-    } catch (err) {
-      res.status(500).json({
+      return res.status(200).json({
+        success: true,
+
+        count:
+          products.length,
+
+        products,
+      });
+    } catch (error) {
+      console.error(
+        "❌ Trending Products Error:",
+        error
+      );
+
+      return res.status(500).json({
         success: false,
 
         message:
-          err.message,
+          error.message ||
+          "Failed to fetch trending products",
       });
     }
   };
