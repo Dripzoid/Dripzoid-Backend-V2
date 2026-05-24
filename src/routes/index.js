@@ -36,7 +36,7 @@ router.use("/orders", orderRoutes);
 router.use("/user/orders", userOrdersRoutes);
 router.use("/admin/orders", adminOrdersRoutes);
 router.use(
-  "/api/admin",
+  "/admin",
   backupRoutes
 );
 router.use(
