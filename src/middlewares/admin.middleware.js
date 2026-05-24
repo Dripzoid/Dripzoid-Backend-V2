@@ -3,6 +3,8 @@ import { authenticateToken } from "./auth.middleware.js";
 // 🔐 Admin Middleware
 export function requireAdmin(req, res, next) {
   try {
+    console.log("AUTH MIDDLEWARE RUNNING");
+    console.log("USER:", req.user);
     if (!req.user) {
       return res.status(401).json({
         message: "Unauthorized",
