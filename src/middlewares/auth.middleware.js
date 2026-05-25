@@ -2,6 +2,8 @@ import jwt from "jsonwebtoken";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
+import prisma from "../lib/prisma.js";
+
 // 🔐 Main Auth Middleware
 export function authenticateToken(req, res, next) {
   try {
@@ -54,3 +56,123 @@ export function authenticateToken(req, res, next) {
     });
   }
 }
+
+/* ======================================================
+   PROTECT ROUTE
+====================================================== */
+
+export const protect = async (
+  req,
+  res,
+  next
+) => {
+  try {
+    let token = null;
+
+    /* =========================
+       TOKEN FROM COOKIE
+    ========================= */
+
+    if (req.cookies?.token) {
+      token = req.cookies.token;
+    }
+
+    /* =========================
+       TOKEN FROM HEADER
+    ========================= */
+
+    else if (
+      req.headers.authorization?.startsWith(
+        "Bearer "
+      )
+    ) {
+      token =
+        req.headers.authorization.split(
+          " "
+        )[1];
+    }
+
+    /* =========================
+       NO TOKEN
+    ========================= */
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+
+        message:
+          "Unauthorized",
+      });
+    }
+
+    /* =========================
+       VERIFY TOKEN
+    ========================= */
+
+    const decoded = jwt.verify(
+      token,
+      JWT_SECRET
+    );
+
+    /* =========================
+       FIND USER
+    ========================= */
+
+    const user =
+      await prisma.user.findUnique({
+        where: {
+          id: decoded.id,
+        },
+      });
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+
+        message:
+          "User not found",
+      });
+    }
+
+    /* =========================
+       ATTACH USER
+    ========================= */
+
+    req.user = user;
+
+    next();
+  } catch (err) {
+    console.error(
+      "Protect Middleware Error:",
+      err
+    );
+
+    return res.status(401).json({
+      success: false,
+
+      message:
+        "Invalid token",
+    });
+  }
+};
+
+/* ======================================================
+   ADMIN ONLY
+====================================================== */
+
+export const adminOnly = (
+  req,
+  res,
+  next
+) => {
+  if (!req.user?.is_admin) {
+    return res.status(403).json({
+      success: false,
+
+      message:
+        "Admin access required",
+    });
+  }
+
+  next();
+};
