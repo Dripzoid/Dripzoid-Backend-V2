@@ -176,7 +176,7 @@ export async function getAllOrdersService(
           },
         },
 
-        orderItems: true,
+        items: true,
       },
     }),
 
@@ -215,7 +215,7 @@ export async function getAllOrdersService(
             ?.phone || null,
 
         items_count:
-          order.orderItems
+          order.items
             ?.length || 0,
       })
     );
@@ -282,7 +282,7 @@ export async function getAdminOrderByIdService(
           },
         },
 
-        orderItems: {
+        items: {
           include: {
             product: true,
           },
@@ -301,7 +301,7 @@ export async function getAdminOrderByIdService(
   ========================= */
 
   const items =
-    order.orderItems.map(
+    order.items.map(
       (item) => {
         const images =
           parseImages(
@@ -476,7 +476,7 @@ export async function deleteOrderService(
   }
 
   await prisma.$transaction([
-    prisma.orderItem.deleteMany({
+    prisma.item.deleteMany({
       where: {
         orderId,
       },
