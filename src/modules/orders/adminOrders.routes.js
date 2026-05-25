@@ -1,3 +1,5 @@
+// modules/admin/orders/adminOrders.routes.js
+
 import express from "express";
 
 import {
@@ -5,21 +7,78 @@ import {
   getOrder,
   updateStatus,
   deleteOrder,
+  bulkUpdateOrders,
 } from "./adminOrders.controller.js";
 
-import { adminAuth } from "../../middlewares/admin.middleware.js";
+import {
+  adminAuth,
+} from "../../middlewares/admin.middleware.js";
 
-const router = express.Router();
+const router =
+  express.Router();
 
+/* =====================================================
+   📦 GET ORDERS
+===================================================== */
 
-// 📦 Orders
-router.get("/", adminAuth, getAllOrders);
-router.get("/:id", adminAuth, getOrder);
+router.get(
+  "/",
+  adminAuth,
+  getAllOrders
+);
 
-// 🔄 Update
-router.put("/:id/status", adminAuth, updateStatus);
+router.get(
+  "/:id",
+  adminAuth,
+  getOrder
+);
 
-// ❌ Delete
-router.delete("/:id", adminAuth, deleteOrder);
+/* =====================================================
+   🔄 UPDATE STATUS
+===================================================== */
+
+router.patch(
+  "/:id",
+  adminAuth,
+  updateStatus
+);
+
+router.put(
+  "/:id",
+  adminAuth,
+  updateStatus
+);
+
+router.put(
+  "/:id/status",
+  adminAuth,
+  updateStatus
+);
+
+/* =====================================================
+   📦 BULK UPDATE
+===================================================== */
+
+router.post(
+  "/bulk-update",
+  adminAuth,
+  bulkUpdateOrders
+);
+
+router.put(
+  "/bulk-update",
+  adminAuth,
+  bulkUpdateOrders
+);
+
+/* =====================================================
+   ❌ DELETE
+===================================================== */
+
+router.delete(
+  "/:id",
+  adminAuth,
+  deleteOrder
+);
 
 export default router;
