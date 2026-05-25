@@ -27,7 +27,7 @@ import addressRoutes from "../modules/address/address.routes.js";
 import accountRoutes from "../modules/account/account.routes.js";
 import backupRoutes from "../modules/admin/backup.routes.js";
 import adminStatsRoutes from "../modules/admin/stats/stats.routes.js";
-import shippingRoutes from "./integrations/shipping.routes.js";
+import shippingRoutes from "../integrations/shipping.routes.js";
 
 const router = express.Router();
 
