@@ -1,3 +1,5 @@
+// modules/admin/products/adminProducts.service.js
+
 import prisma from "../../lib/prisma.js";
 
 import {
@@ -160,7 +162,7 @@ export async function getAdminProductsService({
       : {};
 
   /* =========================
-     FETCH DATA
+     FETCH PRODUCTS
   ========================= */
 
   const [
@@ -180,13 +182,46 @@ export async function getAdminProductsService({
         pageLimit,
 
       orderBy,
-
-      include: {
-        productSizes:
-          true,
-      },
     }),
   ]);
+
+  /* =========================
+     FETCH PRODUCT SIZES
+  ========================= */
+
+  const productIds =
+    products.map(
+      (p) => p.id
+    );
+
+  const productSizes =
+    await prisma.productSize.findMany(
+      {
+        where: {
+          productId: {
+            in: productIds,
+          },
+        },
+      }
+    );
+
+  /* =========================
+     ATTACH SIZES
+  ========================= */
+
+  const productsWithSizes =
+    products.map(
+      (product) => ({
+        ...product,
+
+        productSizes:
+          productSizes.filter(
+            (size) =>
+              size.productId ===
+              product.id
+          ),
+      })
+    );
 
   /* =========================
      FORMAT PRODUCTS
@@ -194,7 +229,7 @@ export async function getAdminProductsService({
 
   const data =
     await Promise.all(
-      products.map(
+      productsWithSizes.map(
         formatProduct
       )
     );
@@ -232,11 +267,6 @@ export async function getAdminProductByIdService(
       where: {
         id,
       },
-
-      include: {
-        productSizes:
-          true,
-      },
     });
 
   if (!product) {
@@ -245,9 +275,20 @@ export async function getAdminProductByIdService(
     );
   }
 
-  return formatProduct(
-    product
-  );
+  const productSizes =
+    await prisma.productSize.findMany(
+      {
+        where: {
+          productId: id,
+        },
+      }
+    );
+
+  return formatProduct({
+    ...product,
+
+    productSizes,
+  });
 }
 
 /* =====================================================
@@ -528,7 +569,7 @@ export async function updateProductService(
   });
 
   /* =========================
-     REPLACE SIZES
+     REPLACE PRODUCT SIZES
   ========================= */
 
   await prisma.productSize.deleteMany({
