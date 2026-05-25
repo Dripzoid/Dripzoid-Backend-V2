@@ -31,7 +31,7 @@ async function generateToken() {
       response.data.token;
 
     /* =========================================
-       CACHE FOR ~9 DAYS
+       CACHE TOKEN
     ========================================= */
 
     tokenExpiry =
@@ -49,7 +49,7 @@ async function generateToken() {
     return cachedToken;
   } catch (err) {
     console.error(
-      "Shiprocket auth error:",
+      "❌ Shiprocket auth error:",
       err?.response?.data ||
         err.message
     );
@@ -105,8 +105,8 @@ async function shiprocketRequest({
             "application/json",
         },
 
-        data,
         params,
+        data,
 
         timeout: 15000,
       });
@@ -124,13 +124,13 @@ async function shiprocketRequest({
       status === 401 &&
       retry
     ) {
-      console.log(
-        "🔄 Refreshing Shiprocket token..."
-      );
-
       cachedToken = null;
 
       tokenExpiry = null;
+
+      console.log(
+        "🔄 Refreshing Shiprocket token..."
+      );
 
       return shiprocketRequest({
         method,
@@ -142,7 +142,7 @@ async function shiprocketRequest({
     }
 
     console.error(
-      `Shiprocket API Error [${endpoint}]`,
+      `❌ Shiprocket API Error [${endpoint}]`,
       err?.response?.data ||
         err.message
     );
@@ -243,7 +243,7 @@ export async function cancelShipment(
 }
 
 /* =====================================================
-   📦 AVAILABLE COURIERS
+   📦 GET AVAILABLE COURIERS
 ===================================================== */
 
 export async function getAvailableCouriers({
@@ -251,18 +251,52 @@ export async function getAvailableCouriers({
   delivery_postcode,
   cod = 0,
   weight = 0.5,
-}) {
-  return shiprocketRequest({
-    endpoint:
-      "/courier/serviceability",
 
-    params: {
-      pickup_postcode,
-      delivery_postcode,
-      cod,
-      weight,
-    },
-  });
+  length = 10,
+  breadth = 10,
+  height = 5,
+
+  declared_value = 500,
+
+  mode = "Surface",
+}) {
+
+  const response =
+    await shiprocketRequest({
+      endpoint:
+        "/courier/serviceability/",
+
+      params: {
+        pickup_postcode,
+
+        delivery_postcode,
+
+        cod,
+
+        weight,
+
+        length,
+
+        breadth,
+
+        height,
+
+        declared_value,
+
+        mode,
+      },
+    });
+
+  console.log(
+    "📦 Shiprocket Serviceability Response:",
+    JSON.stringify(
+      response,
+      null,
+      2
+    )
+  );
+
+  return response;
 }
 
 /* =====================================================
@@ -274,8 +308,17 @@ export async function checkServiceability(
   {
     weight = 0.5,
     cod = 0,
+
+    length = 10,
+    breadth = 10,
+    height = 5,
+
+    declared_value = 500,
+
+    mode = "Surface",
   } = {}
 ) {
+
   const response =
     await getAvailableCouriers({
       pickup_postcode:
@@ -285,12 +328,24 @@ export async function checkServiceability(
       delivery_postcode:
         pincode,
 
-      weight,
       cod,
+      weight,
+
+      length,
+      breadth,
+      height,
+
+      declared_value,
+
+      mode,
     });
 
+  /* =========================================
+     IMPORTANT FIX
+  ========================================= */
+
   return (
-    response?.data
+    response
       ?.available_courier_companies ||
     []
   );
@@ -302,28 +357,26 @@ export async function checkServiceability(
 
 export async function getDeliveryEstimateService(
   pincode,
-  {
-    weight = 0.5,
-    cod = 0,
-  } = {}
+  options = {}
 ) {
+
   const couriers =
     await checkServiceability(
       pincode,
-      {
-        weight,
-        cod,
-      }
+      options
     );
 
   /* =========================================
-     ❌ NO COURIERS
+     ❌ NOT SERVICEABLE
   ========================================= */
 
   if (
+    !couriers ||
     couriers.length === 0
   ) {
     return {
+      success: false,
+
       serviceable: false,
 
       couriers: [],
@@ -337,6 +390,7 @@ export async function getDeliveryEstimateService(
   const fastest =
     couriers.reduce(
       (best, current) => {
+
         if (!best) {
           return current;
         }
@@ -366,7 +420,7 @@ export async function getDeliveryEstimateService(
 
     estimated_delivery:
       fastest?.etd ||
-      `${fastest?.estimated_delivery_days} Days`,
+      "ETA unavailable",
 
     cod_available:
       couriers.some(
@@ -377,9 +431,15 @@ export async function getDeliveryEstimateService(
     courier_count:
       couriers.length,
 
+    fastest_courier:
+      fastest?.courier_name,
+
     couriers:
       couriers.map(
         (courier) => ({
+          courier_company_id:
+            courier.courier_company_id,
+
           courier_name:
             courier.courier_name,
 
@@ -389,11 +449,11 @@ export async function getDeliveryEstimateService(
           rate:
             courier.rate,
 
-          rating:
-            courier.rating,
-
           cod:
             courier.cod,
+
+          rating:
+            courier.rating,
 
           estimated_delivery_days:
             courier.estimated_delivery_days,
