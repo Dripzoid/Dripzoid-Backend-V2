@@ -62,6 +62,7 @@ function parseSizeStock(input) {
 }
 
 
+
 /* =====================================================
    🔥 GET CATEGORY
 ===================================================== */
@@ -73,19 +74,24 @@ async function getCategoryByName(
     return null;
   }
 
+  const normalizedCategory =
+    String(categoryName)
+      .trim()
+      .toLowerCase();
+
   const category =
     await prisma.category.findFirst(
       {
         where: {
           category:
-            categoryName,
+            normalizedCategory,
         },
       }
     );
 
   if (!category) {
     throw new Error(
-      "Category not found"
+      `Category not found: ${categoryName}`
     );
   }
 
