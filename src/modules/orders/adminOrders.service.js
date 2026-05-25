@@ -1,3 +1,5 @@
+// modules/admin/orders/adminOrders.service.js
+
 import prisma from "../../lib/prisma.js";
 
 import {
@@ -8,21 +10,76 @@ import {
    📦 GET ALL ORDERS
 ===================================================== */
 
-export async function getAllOrdersService({
-  page = 1,
-  limit = 10,
-  status,
-  search,
-}) {
+export async function getAllOrdersService(
+  {
+    page = 1,
+    limit = 10,
+    status,
+    search,
+    orderId,
+    sort = "newest",
+  }
+) {
   const currentPage =
     Number(page) || 1;
 
+  const showAll =
+    String(limit) ===
+    "all";
+
   const pageLimit =
-    Number(limit) || 10;
+    showAll
+      ? undefined
+      : Number(limit) ||
+        10;
 
   const skip =
-    (currentPage - 1) *
-    pageLimit;
+    showAll
+      ? undefined
+      : (currentPage -
+          1) *
+        pageLimit;
+
+  /* =========================
+     SORT
+  ========================= */
+
+  const SORT_MAP = {
+    newest: {
+      createdAt:
+        "desc",
+    },
+
+    oldest: {
+      createdAt:
+        "asc",
+    },
+
+    amount_asc: {
+      totalAmount:
+        "asc",
+    },
+
+    amount_desc: {
+      totalAmount:
+        "desc",
+    },
+
+    status_asc: {
+      status: "asc",
+    },
+
+    status_desc: {
+      status:
+        "desc",
+    },
+  };
+
+  const orderBy =
+    SORT_MAP[
+      sort
+    ] ||
+    SORT_MAP.newest;
 
   /* =========================
      WHERE FILTERS
@@ -34,14 +91,28 @@ export async function getAllOrdersService({
 
   if (status) {
     where.status = {
-      equals: status,
-      mode: "insensitive",
+      equals:
+        String(status)
+          .trim()
+          .toLowerCase(),
     };
   }
 
-  /* SEARCH FILTER */
+  /* ORDER ID */
 
-  if (search) {
+  if (orderId) {
+    where.id = {
+      contains:
+        String(orderId),
+    };
+  }
+
+  /* SEARCH */
+
+  if (
+    search &&
+    !orderId
+  ) {
     where.OR = [
       {
         user: {
@@ -69,15 +140,13 @@ export async function getAllOrdersService({
         id: {
           contains:
             search,
-          mode:
-            "insensitive",
         },
       },
     ];
   }
 
   /* =========================
-     FETCH ORDERS
+     FETCH
   ========================= */
 
   const [
@@ -92,14 +161,13 @@ export async function getAllOrdersService({
       take:
         pageLimit,
 
-      orderBy: {
-        createdAt:
-          "desc",
-      },
+      orderBy,
 
       include: {
         user: {
           select: {
+            id: true,
+
             name: true,
 
             email: true,
@@ -107,6 +175,8 @@ export async function getAllOrdersService({
             phone: true,
           },
         },
+
+        orderItems: true,
       },
     }),
 
@@ -116,29 +186,53 @@ export async function getAllOrdersService({
   ]);
 
   /* =========================
-     FORMAT RESPONSE
+     FORMAT
   ========================= */
 
   const formattedOrders =
-    orders.map((order) => ({
-      ...order,
+    orders.map(
+      (order) => ({
+        ...order,
 
-      customer_name:
-        order.user?.name ||
-        null,
+        user_id:
+          order.user
+            ?.id || null,
 
-      customer_email:
-        order.user?.email ||
-        null,
+        user_name:
+          order.user
+            ?.name || null,
 
-      customer_phone:
-        order.user?.phone ||
-        null,
-    }));
+        customer_name:
+          order.user
+            ?.name || null,
+
+        customer_email:
+          order.user
+            ?.email || null,
+
+        customer_phone:
+          order.user
+            ?.phone || null,
+
+        items_count:
+          order.orderItems
+            ?.length || 0,
+      })
+    );
 
   return {
     data:
       formattedOrders,
+
+    total,
+
+    totalPages:
+      showAll
+        ? 1
+        : Math.ceil(
+            total /
+              pageLimit
+          ),
 
     meta: {
       total,
@@ -147,13 +241,17 @@ export async function getAllOrdersService({
         currentPage,
 
       pages:
-        Math.ceil(
-          total /
-            pageLimit
-        ),
+        showAll
+          ? 1
+          : Math.ceil(
+              total /
+                pageLimit
+            ),
 
       limit:
-        pageLimit,
+        showAll
+          ? total
+          : pageLimit,
     },
   };
 }
@@ -174,6 +272,8 @@ export async function getAdminOrderByIdService(
       include: {
         user: {
           select: {
+            id: true,
+
             name: true,
 
             email: true,
@@ -197,7 +297,7 @@ export async function getAdminOrderByIdService(
   }
 
   /* =========================
-     FORMAT ITEMS
+     ITEMS
   ========================= */
 
   const items =
@@ -211,6 +311,9 @@ export async function getAdminOrderByIdService(
 
         return {
           id:
+            item.productId,
+
+          product_id:
             item.productId,
 
           name:
@@ -230,6 +333,12 @@ export async function getAdminOrderByIdService(
           price:
             item.price,
 
+          selectedColor:
+            item.selectedColor,
+
+          selectedSize:
+            item.selectedSize,
+
           options: {
             color:
               item.selectedColor,
@@ -244,17 +353,25 @@ export async function getAdminOrderByIdService(
   return {
     ...order,
 
-    customer_name:
-      order.user?.name ||
+    user_id:
+      order.user?.id ||
       null,
+
+    user_name:
+      order.user
+        ?.name || null,
+
+    customer_name:
+      order.user
+        ?.name || null,
 
     customer_email:
-      order.user?.email ||
-      null,
+      order.user
+        ?.email || null,
 
     customer_phone:
-      order.user?.phone ||
-      null,
+      order.user
+        ?.phone || null,
 
     items,
   };
@@ -268,10 +385,6 @@ export async function updateOrderStatusService(
   orderId,
   status
 ) {
-  /* =========================
-     CHECK EXISTENCE
-  ========================= */
-
   const existingOrder =
     await prisma.order.findUnique({
       where: {
@@ -285,21 +398,61 @@ export async function updateOrderStatusService(
     );
   }
 
-  /* =========================
-     UPDATE STATUS
-  ========================= */
-
   await prisma.order.update({
     where: {
       id: orderId,
     },
 
     data: {
-      status,
+      status:
+        String(status)
+          .trim()
+          .toLowerCase(),
     },
   });
 
   return true;
+}
+
+/* =====================================================
+   📦 BULK UPDATE
+===================================================== */
+
+export async function bulkUpdateOrdersService(
+  ids,
+  status
+) {
+  if (
+    !Array.isArray(ids) ||
+    !ids.length
+  ) {
+    throw new Error(
+      "No order IDs provided"
+    );
+  }
+
+  const normalizedStatus =
+    String(status)
+      .trim()
+      .toLowerCase();
+
+  const result =
+    await prisma.order.updateMany({
+      where: {
+        id: {
+          in: ids.map(
+            String
+          ),
+        },
+      },
+
+      data: {
+        status:
+          normalizedStatus,
+      },
+    });
+
+  return result.count;
 }
 
 /* =====================================================
@@ -309,10 +462,6 @@ export async function updateOrderStatusService(
 export async function deleteOrderService(
   orderId
 ) {
-  /* =========================
-     CHECK EXISTENCE
-  ========================= */
-
   const existingOrder =
     await prisma.order.findUnique({
       where: {
@@ -325,10 +474,6 @@ export async function deleteOrderService(
       "Order not found"
     );
   }
-
-  /* =========================
-     DELETE TRANSACTION
-  ========================= */
 
   await prisma.$transaction([
     prisma.orderItem.deleteMany({
