@@ -4,6 +4,7 @@ const BASE_URL =
   "https://apiv2.shiprocket.in/v1/external";
 
 let cachedToken = null;
+
 let tokenExpiry = null;
 
 /* =====================================================
@@ -29,7 +30,10 @@ async function generateToken() {
     cachedToken =
       response.data.token;
 
-    // cache for ~9 days
+    /* =========================================
+       CACHE FOR ~9 DAYS
+    ========================================= */
+
     tokenExpiry =
       Date.now() +
       9 *
@@ -62,7 +66,8 @@ export async function getShiprocketToken() {
   if (
     cachedToken &&
     tokenExpiry &&
-    Date.now() < tokenExpiry
+    Date.now() <
+      tokenExpiry
   ) {
     return cachedToken;
   }
@@ -81,7 +86,7 @@ async function shiprocketRequest({
   params = null,
   retry = true,
 }) {
-  let token =
+  const token =
     await getShiprocketToken();
 
   try {
@@ -111,13 +116,20 @@ async function shiprocketRequest({
     const status =
       err?.response?.status;
 
-    // Token expired
-    if (status === 401 && retry) {
+    /* =========================================
+       TOKEN EXPIRED
+    ========================================= */
+
+    if (
+      status === 401 &&
+      retry
+    ) {
       console.log(
         "🔄 Refreshing Shiprocket token..."
       );
 
       cachedToken = null;
+
       tokenExpiry = null;
 
       return shiprocketRequest({
@@ -135,12 +147,7 @@ async function shiprocketRequest({
         err.message
     );
 
-    throw new IntegrationError(
-      `Shiprocket API failed: ${endpoint}`,
-
-      err?.response?.data ||
-        err.message
-    );
+    throw err;
   }
 }
 
@@ -183,7 +190,7 @@ export async function generateAWB({
 }
 
 /* =====================================================
-   📍 TRACK ORDER
+   📍 TRACK SHIPMENT
 ===================================================== */
 
 export async function trackShipment(
@@ -217,7 +224,7 @@ export async function requestPickup(
 }
 
 /* =====================================================
-   ❌ CANCEL ORDER
+   ❌ CANCEL SHIPMENT
 ===================================================== */
 
 export async function cancelShipment(
@@ -258,6 +265,10 @@ export async function getAvailableCouriers({
   });
 }
 
+/* =====================================================
+   🚚 CHECK SERVICEABILITY
+===================================================== */
+
 export async function checkServiceability(
   pincode,
   {
@@ -265,7 +276,6 @@ export async function checkServiceability(
     cod = 0,
   } = {}
 ) {
-
   const response =
     await getAvailableCouriers({
       pickup_postcode:
@@ -286,3 +296,108 @@ export async function checkServiceability(
   );
 }
 
+/* =====================================================
+   📦 DELIVERY ESTIMATE
+===================================================== */
+
+export async function getDeliveryEstimateService(
+  pincode,
+  {
+    weight = 0.5,
+    cod = 0,
+  } = {}
+) {
+  const couriers =
+    await checkServiceability(
+      pincode,
+      {
+        weight,
+        cod,
+      }
+    );
+
+  /* =========================================
+     ❌ NO COURIERS
+  ========================================= */
+
+  if (
+    couriers.length === 0
+  ) {
+    return {
+      serviceable: false,
+
+      couriers: [],
+    };
+  }
+
+  /* =========================================
+     ⚡ FASTEST COURIER
+  ========================================= */
+
+  const fastest =
+    couriers.reduce(
+      (best, current) => {
+        if (!best) {
+          return current;
+        }
+
+        const currentDays =
+          Number(
+            current.estimated_delivery_days
+          ) || 999;
+
+        const bestDays =
+          Number(
+            best.estimated_delivery_days
+          ) || 999;
+
+        return currentDays <
+          bestDays
+          ? current
+          : best;
+      },
+      null
+    );
+
+  return {
+    success: true,
+
+    serviceable: true,
+
+    estimated_delivery:
+      fastest?.etd ||
+      `${fastest?.estimated_delivery_days} Days`,
+
+    cod_available:
+      couriers.some(
+        (courier) =>
+          courier.cod === 1
+      ),
+
+    courier_count:
+      couriers.length,
+
+    couriers:
+      couriers.map(
+        (courier) => ({
+          courier_name:
+            courier.courier_name,
+
+          etd:
+            courier.etd,
+
+          rate:
+            courier.rate,
+
+          rating:
+            courier.rating,
+
+          cod:
+            courier.cod,
+
+          estimated_delivery_days:
+            courier.estimated_delivery_days,
+        })
+      ),
+  };
+}
