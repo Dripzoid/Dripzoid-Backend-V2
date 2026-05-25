@@ -1,7 +1,7 @@
 import {
   checkServiceability,
   getDeliveryEstimateService,
-} from "./shipping.service.js";
+} from "./shiprocket.service.js";
 
 /* =====================================================
    📦 DELIVERY ESTIMATE
