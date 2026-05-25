@@ -26,6 +26,10 @@ export async function getDeliveryEstimate(
         ? 1
         : 0;
 
+    /* =========================================
+       📦 GET ESTIMATE
+    ========================================= */
+
     const result =
       await getDeliveryEstimateService(
         pincode,
@@ -35,8 +39,12 @@ export async function getDeliveryEstimate(
         }
       );
 
+    /* =========================================
+       ❌ NOT SERVICEABLE
+    ========================================= */
+
     if (
-      !result.serviceable
+      !result?.serviceable
     ) {
       return res.status(404).json({
         success: false,
@@ -48,8 +56,33 @@ export async function getDeliveryEstimate(
       });
     }
 
-    return res.json(result);
+    /* =========================================
+       ✅ RESPONSE
+    ========================================= */
+
+    return res.json({
+      success: true,
+
+      serviceable: true,
+
+      estimated_delivery:
+        result.estimated_delivery,
+
+      cod_available:
+        result.cod_available,
+
+      courier_count:
+        result.courier_count,
+
+      couriers:
+        result.couriers,
+    });
   } catch (error) {
+    console.error(
+      "Delivery Estimate Error:",
+      error
+    );
+
     next(error);
   }
 }
@@ -70,6 +103,10 @@ export async function checkDeliveryServiceability(
       cod = false,
     } = req.body;
 
+    /* =========================================
+       ❌ VALIDATION
+    ========================================= */
+
     if (!pincode) {
       return res.status(400).json({
         success: false,
@@ -78,6 +115,10 @@ export async function checkDeliveryServiceability(
           "Pincode required",
       });
     }
+
+    /* =========================================
+       🚚 FETCH COURIERS
+    ========================================= */
 
     const couriers =
       await checkServiceability(
@@ -92,7 +133,12 @@ export async function checkDeliveryServiceability(
         }
       );
 
+    /* =========================================
+       ❌ NOT SERVICEABLE
+    ========================================= */
+
     if (
+      !couriers ||
       couriers.length === 0
     ) {
       return res.status(404).json({
@@ -105,6 +151,10 @@ export async function checkDeliveryServiceability(
       });
     }
 
+    /* =========================================
+       ✅ RESPONSE
+    ========================================= */
+
     return res.json({
       success: true,
 
@@ -115,8 +165,8 @@ export async function checkDeliveryServiceability(
 
       cod_available:
         couriers.some(
-          (c) =>
-            c.cod === 1
+          (courier) =>
+            courier.cod === 1
         ),
 
       couriers:
@@ -126,7 +176,8 @@ export async function checkDeliveryServiceability(
               courier.courier_name,
 
             etd:
-              courier.etd,
+              courier.etd ||
+              "N/A",
 
             rate:
               courier.rate,
@@ -143,6 +194,11 @@ export async function checkDeliveryServiceability(
         ),
     });
   } catch (error) {
+    console.error(
+      "Serviceability Error:",
+      error
+    );
+
     next(error);
   }
 }
