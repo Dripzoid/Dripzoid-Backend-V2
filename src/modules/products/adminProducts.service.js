@@ -61,8 +61,6 @@ function parseSizeStock(input) {
   return map;
 }
 
-
-
 /* =====================================================
    🔥 GET CATEGORY
 ===================================================== */
@@ -157,29 +155,30 @@ export async function getAdminProductsService(
      SEARCH FILTER
   ========================= */
 
-  const where = search
-    ? {
-        OR: [
-          {
-            name: {
-              contains:
-                search,
-              mode:
-                "insensitive",
+  const where =
+    search
+      ? {
+          OR: [
+            {
+              name: {
+                contains:
+                  search,
+                mode:
+                  "insensitive",
+              },
             },
-          },
 
-          {
-            description: {
-              contains:
-                search,
-              mode:
-                "insensitive",
+            {
+              description: {
+                contains:
+                  search,
+                mode:
+                  "insensitive",
+              },
             },
-          },
-        ],
-      }
-    : {};
+          ],
+        }
+      : {};
 
   /* =========================
      FETCH PRODUCTS
@@ -241,7 +240,7 @@ export async function getAdminProductsService(
 
         category:
           product.category
-            ?.name || "",
+            ?.category || "",
 
         productSizes:
           productSizes.filter(
@@ -323,7 +322,7 @@ export async function getAdminProductByIdService(
 
     category:
       product.category
-        ?.name || "",
+        ?.category || "",
 
     productSizes,
   });
@@ -343,7 +342,6 @@ export async function createProductService(
     actualPrice,
     images,
     rating,
-    sizes,
     colors,
     color,
     originalPrice,
@@ -426,9 +424,6 @@ export async function createProductService(
           Number(
             rating
           ) || 0,
-
-        sizes:
-          sizes || "",
 
         colors:
           (
@@ -593,10 +588,6 @@ export async function updateProductService(
         Number(
           body.rating
         ) || 0,
-
-      sizes:
-        body.sizes ||
-        "",
 
       colors:
         (
