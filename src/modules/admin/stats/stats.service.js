@@ -298,37 +298,25 @@ export const getAdminStatsService =
       ========================= */
 
       prisma.user.count({
-        where: {
-          OR: [
-            {
-              gender: null,
-            },
+  where: {
+    OR: [
+      {
+        gender: null,
+      },
 
-            {
-              AND: [
-                {
-                  gender: {
-                    not: {
-                      equals: "male",
-                      mode: "insensitive",
-                    },
-                  },
-                },
-
-                {
-                  gender: {
-                    not: {
-                      equals: "female",
-                      mode: "insensitive",
-                    },
-                  },
-                },
-              ],
-            },
+      {
+        gender: {
+          notIn: [
+            "Male",
+            "Female",
+            "male",
+            "female",
           ],
         },
-      }),
-    ]);
+      },
+    ],
+  },
+})
 
     /* =========================
        RETURN RESPONSE
