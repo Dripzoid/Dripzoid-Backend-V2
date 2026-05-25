@@ -61,6 +61,7 @@ function parseSizeStock(input) {
   return map;
 }
 
+
 /* =====================================================
    🔥 GET CATEGORY
 ===================================================== */
@@ -76,12 +77,8 @@ async function getCategoryByName(
     await prisma.category.findFirst(
       {
         where: {
-          name: {
-            equals:
-              categoryName,
-            mode:
-              "insensitive",
-          },
+          category:
+            categoryName,
         },
       }
     );
