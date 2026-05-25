@@ -316,7 +316,8 @@ export const getAdminStatsService =
       },
     ],
   },
-})
+      }),
+    ]);
 
     /* =========================
        RETURN RESPONSE
