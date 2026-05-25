@@ -13,7 +13,7 @@ router.post("/register", register);
 router.post("/login", login);
 
 // -------------------- GOOGLE OAUTH --------------------
-router.get("/google", googleAuth);
-router.get("/google/callback", googleCallback);
+router.get("/auth/google", googleAuth);
+router.get("/auth/google/callback", googleCallback);
 
 export default router;
