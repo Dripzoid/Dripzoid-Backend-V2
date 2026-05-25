@@ -330,7 +330,7 @@ export async function checkServiceability(
     await getAvailableCouriers({
       pickup_postcode:
         process.env
-          .SHIPROCKET_PICKUP_PINCODE,
+          .WAREHOUSE_PINCODE,
 
       delivery_postcode:
         pincode,
