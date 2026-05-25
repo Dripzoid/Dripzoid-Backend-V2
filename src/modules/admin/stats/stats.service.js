@@ -81,10 +81,15 @@ export const getAdminStatsService =
 
     const [
       totalOrders,
+
       deliveredOrders,
+
       cancelledOrders,
+
       pendingOrders,
+
       confirmedOrders,
+
       shippedOrders,
 
       salesAggregate,
@@ -96,88 +101,145 @@ export const getAdminStatsService =
       soldAggregate,
 
       inStock,
+
       outOfStock,
 
       totalUsers,
 
       maleUsers,
+
       femaleUsers,
+
       otherUsers,
     ] = await Promise.all([
       /* =========================
-         ORDERS
+         TOTAL ORDERS
       ========================= */
 
       prisma.order.count({
         where: dateFilter,
       }),
 
-      prisma.order.count({
-        where: {
-          ...dateFilter,
-          status: "delivered",
-        },
-      }),
+      /* =========================
+         DELIVERED ORDERS
+      ========================= */
 
       prisma.order.count({
         where: {
           ...dateFilter,
-          status: "cancelled",
+
+          status: {
+            equals: "delivered",
+            mode: "insensitive",
+          },
         },
       }),
+
+      /* =========================
+         CANCELLED ORDERS
+      ========================= */
 
       prisma.order.count({
         where: {
           ...dateFilter,
-          status: "pending",
+
+          status: {
+            equals: "cancelled",
+            mode: "insensitive",
+          },
         },
       }),
+
+      /* =========================
+         PENDING ORDERS
+      ========================= */
 
       prisma.order.count({
         where: {
           ...dateFilter,
-          status: "confirmed",
+
+          status: {
+            equals: "pending",
+            mode: "insensitive",
+          },
         },
       }),
+
+      /* =========================
+         CONFIRMED ORDERS
+      ========================= */
 
       prisma.order.count({
         where: {
           ...dateFilter,
-          status: "shipped",
+
+          status: {
+            equals: "confirmed",
+            mode: "insensitive",
+          },
         },
       }),
+
+      /* =========================
+         SHIPPED ORDERS
+      ========================= */
+
+      prisma.order.count({
+        where: {
+          ...dateFilter,
+
+          status: {
+            equals: "shipped",
+            mode: "insensitive",
+          },
+        },
+      }),
+
+      /* =========================
+         TOTAL SALES
+      ========================= */
 
       prisma.order.aggregate({
         where: dateFilter,
+
         _sum: {
           totalAmount: true,
         },
       }),
 
       /* =========================
-         ITEMS SOLD
+         TOTAL ITEMS SOLD
       ========================= */
 
       prisma.orderItem.aggregate({
         where: {
           order: dateFilter,
         },
+
         _sum: {
           quantity: true,
         },
       }),
 
       /* =========================
-         PRODUCTS
+         TOTAL PRODUCTS
       ========================= */
 
       prisma.product.count(),
+
+      /* =========================
+         SOLD PRODUCTS
+      ========================= */
 
       prisma.product.aggregate({
         _sum: {
           sold: true,
         },
       }),
+
+      /* =========================
+         IN STOCK PRODUCTS
+      ========================= */
 
       prisma.product.count({
         where: {
@@ -186,6 +248,10 @@ export const getAdminStatsService =
           },
         },
       }),
+
+      /* =========================
+         OUT OF STOCK PRODUCTS
+      ========================= */
 
       prisma.product.count({
         where: {
@@ -196,22 +262,40 @@ export const getAdminStatsService =
       }),
 
       /* =========================
-         USERS
+         TOTAL USERS
       ========================= */
 
       prisma.user.count(),
 
-      prisma.user.count({
-        where: {
-          gender: "male",
-        },
-      }),
+      /* =========================
+         MALE USERS
+      ========================= */
 
       prisma.user.count({
         where: {
-          gender: "female",
+          gender: {
+            equals: "male",
+            mode: "insensitive",
+          },
         },
       }),
+
+      /* =========================
+         FEMALE USERS
+      ========================= */
+
+      prisma.user.count({
+        where: {
+          gender: {
+            equals: "female",
+            mode: "insensitive",
+          },
+        },
+      }),
+
+      /* =========================
+         OTHER USERS
+      ========================= */
 
       prisma.user.count({
         where: {
@@ -219,13 +303,27 @@ export const getAdminStatsService =
             {
               gender: null,
             },
+
             {
-              gender: {
-                notIn: [
-                  "male",
-                  "female",
-                ],
-              },
+              AND: [
+                {
+                  gender: {
+                    not: {
+                      equals: "male",
+                      mode: "insensitive",
+                    },
+                  },
+                },
+
+                {
+                  gender: {
+                    not: {
+                      equals: "female",
+                      mode: "insensitive",
+                    },
+                  },
+                },
+              ],
             },
           ],
         },
