@@ -1,8 +1,9 @@
 // modules/admin/stats/stats.routes.js
 
 import express from "express";
-
-import authMiddleware from "../authAdmin.js";
+import {
+  adminAuth,
+} from "../../../middlewares/admin.middleware.js";
 
 import {
   getAdminStats,
@@ -16,7 +17,7 @@ const router = express.Router();
 
 router.get(
   "/stats",
-  authMiddleware,
+  adminAuth,
   getAdminStats
 );
 
