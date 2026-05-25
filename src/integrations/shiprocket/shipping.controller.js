@@ -26,6 +26,30 @@ export async function getDeliveryEstimate(
         ? 1
         : 0;
 
+    const length =
+      Number(
+        req.query.length
+      ) || 10;
+
+    const breadth =
+      Number(
+        req.query.breadth
+      ) || 10;
+
+    const height =
+      Number(
+        req.query.height
+      ) || 5;
+
+    const declared_value =
+      Number(
+        req.query.declared_value
+      ) || 500;
+
+    const mode =
+      req.query.mode ||
+      "Surface";
+
     /* =========================================
        📦 GET ESTIMATE
     ========================================= */
@@ -36,15 +60,33 @@ export async function getDeliveryEstimate(
         {
           weight,
           cod,
+
+          length,
+          breadth,
+          height,
+
+          declared_value,
+
+          mode,
         }
       );
+
+    console.log(
+      "📦 Delivery Estimate Result:",
+      JSON.stringify(
+        result,
+        null,
+        2
+      )
+    );
 
     /* =========================================
        ❌ NOT SERVICEABLE
     ========================================= */
 
     if (
-      !result?.serviceable
+      !result ||
+      !result.serviceable
     ) {
       return res.status(404).json({
         success: false,
@@ -60,13 +102,16 @@ export async function getDeliveryEstimate(
        ✅ RESPONSE
     ========================================= */
 
-    return res.json({
+    return res.status(200).json({
       success: true,
 
       serviceable: true,
 
       estimated_delivery:
         result.estimated_delivery,
+
+      fastest_courier:
+        result.fastest_courier,
 
       cod_available:
         result.cod_available,
@@ -79,8 +124,10 @@ export async function getDeliveryEstimate(
     });
   } catch (error) {
     console.error(
-      "Delivery Estimate Error:",
-      error
+      "❌ Delivery Estimate Error:",
+      error?.response?.data ||
+        error.message ||
+        error
     );
 
     next(error);
@@ -99,8 +146,20 @@ export async function checkDeliveryServiceability(
   try {
     const {
       pincode,
+
       weight = 0.5,
+
       cod = false,
+
+      length = 10,
+
+      breadth = 10,
+
+      height = 5,
+
+      declared_value = 500,
+
+      mode = "Surface",
     } = req.body;
 
     /* =========================================
@@ -117,7 +176,7 @@ export async function checkDeliveryServiceability(
     }
 
     /* =========================================
-       🚚 FETCH COURIERS
+       🚚 CHECK SERVICEABILITY
     ========================================= */
 
     const couriers =
@@ -130,11 +189,36 @@ export async function checkDeliveryServiceability(
           cod: cod
             ? 1
             : 0,
+
+          length:
+            Number(length),
+
+          breadth:
+            Number(breadth),
+
+          height:
+            Number(height),
+
+          declared_value:
+            Number(
+              declared_value
+            ),
+
+          mode,
         }
       );
 
+    console.log(
+      "🚚 Serviceability Couriers:",
+      JSON.stringify(
+        couriers,
+        null,
+        2
+      )
+    );
+
     /* =========================================
-       ❌ NOT SERVICEABLE
+       ❌ NO COURIERS
     ========================================= */
 
     if (
@@ -152,10 +236,70 @@ export async function checkDeliveryServiceability(
     }
 
     /* =========================================
+       ⚡ FASTEST COURIER
+    ========================================= */
+
+    const fastest =
+      couriers.reduce(
+        (best, current) => {
+
+          if (!best) {
+            return current;
+          }
+
+          const currentDays =
+            Number(
+              current.estimated_delivery_days
+            ) || 999;
+
+          const bestDays =
+            Number(
+              best.estimated_delivery_days
+            ) || 999;
+
+          return currentDays <
+            bestDays
+            ? current
+            : best;
+        },
+        null
+      );
+
+    /* =========================================
+       💰 CHEAPEST COURIER
+    ========================================= */
+
+    const cheapest =
+      couriers.reduce(
+        (best, current) => {
+
+          if (!best) {
+            return current;
+          }
+
+          const currentRate =
+            Number(
+              current.rate
+            ) || 999999;
+
+          const bestRate =
+            Number(
+              best.rate
+            ) || 999999;
+
+          return currentRate <
+            bestRate
+            ? current
+            : best;
+        },
+        null
+      );
+
+    /* =========================================
        ✅ RESPONSE
     ========================================= */
 
-    return res.json({
+    return res.status(200).json({
       success: true,
 
       serviceable: true,
@@ -169,9 +313,40 @@ export async function checkDeliveryServiceability(
             courier.cod === 1
         ),
 
+      fastest_courier:
+        fastest
+          ? {
+              courier_name:
+                fastest.courier_name,
+
+              etd:
+                fastest.etd,
+
+              rate:
+                fastest.rate,
+            }
+          : null,
+
+      cheapest_courier:
+        cheapest
+          ? {
+              courier_name:
+                cheapest.courier_name,
+
+              etd:
+                cheapest.etd,
+
+              rate:
+                cheapest.rate,
+            }
+          : null,
+
       couriers:
         couriers.map(
           (courier) => ({
+            courier_company_id:
+              courier.courier_company_id,
+
             courier_name:
               courier.courier_name,
 
@@ -179,24 +354,47 @@ export async function checkDeliveryServiceability(
               courier.etd ||
               "N/A",
 
+            estimated_delivery_days:
+              courier.estimated_delivery_days,
+
             rate:
               courier.rate,
 
-            rating:
-              courier.rating,
+            freight_charge:
+              courier.freight_charge,
 
             cod:
               courier.cod,
 
-            estimated_delivery_days:
-              courier.estimated_delivery_days,
+            rating:
+              courier.rating,
+
+            realtime_tracking:
+              courier.realtime_tracking,
+
+            delivery_performance:
+              courier.delivery_performance,
+
+            pickup_performance:
+              courier.pickup_performance,
+
+            rto_performance:
+              courier.rto_performance,
+
+            is_surface:
+              courier.is_surface,
+
+            is_rto_address_available:
+              courier.is_rto_address_available,
           })
         ),
     });
   } catch (error) {
     console.error(
-      "Serviceability Error:",
-      error
+      "❌ Serviceability Error:",
+      error?.response?.data ||
+        error.message ||
+        error
     );
 
     next(error);
