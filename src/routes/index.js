@@ -30,7 +30,7 @@ import adminStatsRoutes from "../modules/admin/stats/stats.routes.js";
 
 const router = express.Router();
 
-router.use("/", authRoutes);
+router.use("/auth", authRoutes);
 router.use("/users", userRoutes);
 router.use("/sessions", sessionRoutes);
 router.use("/orders", orderRoutes);
