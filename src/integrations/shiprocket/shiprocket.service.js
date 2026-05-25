@@ -8,7 +8,7 @@ let cachedToken = null;
 let tokenExpiry = null;
 
 /* =====================================================
-   🔐 AUTH TOKEN
+   🔐 GENERATE TOKEN
 ===================================================== */
 
 async function generateToken() {
@@ -31,7 +31,7 @@ async function generateToken() {
       response.data.token;
 
     /* =========================================
-       CACHE TOKEN
+       CACHE TOKEN ~9 DAYS
     ========================================= */
 
     tokenExpiry =
@@ -76,7 +76,7 @@ export async function getShiprocketToken() {
 }
 
 /* =====================================================
-   🌐 API CLIENT
+   🌐 SHIPROCKET REQUEST
 ===================================================== */
 
 async function shiprocketRequest({
@@ -105,8 +105,8 @@ async function shiprocketRequest({
             "application/json",
         },
 
-        params,
         data,
+        params,
 
         timeout: 15000,
       });
@@ -124,13 +124,13 @@ async function shiprocketRequest({
       status === 401 &&
       retry
     ) {
-      cachedToken = null;
-
-      tokenExpiry = null;
-
       console.log(
         "🔄 Refreshing Shiprocket token..."
       );
+
+      cachedToken = null;
+
+      tokenExpiry = null;
 
       return shiprocketRequest({
         method,
@@ -243,12 +243,13 @@ export async function cancelShipment(
 }
 
 /* =====================================================
-   📦 GET AVAILABLE COURIERS
+   📦 AVAILABLE COURIERS
 ===================================================== */
 
 export async function getAvailableCouriers({
   pickup_postcode,
   delivery_postcode,
+
   cod = 0,
   weight = 0.5,
 
@@ -341,11 +342,11 @@ export async function checkServiceability(
     });
 
   /* =========================================
-     IMPORTANT FIX
+     CORRECT RESPONSE PATH
   ========================================= */
 
   return (
-    response
+    response?.data
       ?.available_courier_companies ||
     []
   );
@@ -367,7 +368,7 @@ export async function getDeliveryEstimateService(
     );
 
   /* =========================================
-     ❌ NOT SERVICEABLE
+     ❌ NO COURIERS
   ========================================= */
 
   if (
@@ -457,6 +458,18 @@ export async function getDeliveryEstimateService(
 
           estimated_delivery_days:
             courier.estimated_delivery_days,
+
+          freight_charge:
+            courier.freight_charge,
+
+          rto_charges:
+            courier.rto_charges,
+
+          realtime_tracking:
+            courier.realtime_tracking,
+
+          delivery_performance:
+            courier.delivery_performance,
         })
       ),
   };
