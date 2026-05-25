@@ -3,8 +3,14 @@ import passport from "passport";
 
 import prisma from "../../lib/prisma.js";
 
-import { getDevice, getIP } from "../../utils/device.js";
-import { insertUserActivity } from "../../utils/activity.js";
+import {
+  getDevice,
+  getIP,
+} from "../../utils/device.js";
+
+import {
+  insertUserActivity,
+} from "../../utils/activity.js";
 
 import {
   registerUser,
@@ -22,7 +28,10 @@ const CLIENT_URL =
    SESSION CREATION
 ====================================================== */
 
-async function createSession(user, req) {
+async function createSession(
+  user,
+  req
+) {
   const session =
     await prisma.userSession.create({
       data: {
@@ -37,6 +46,64 @@ async function createSession(user, req) {
     });
 
   return session.id;
+}
+
+/* ======================================================
+   GENERATE JWT
+====================================================== */
+
+function generateToken(
+  user,
+  sessionId
+) {
+  return jwt.sign(
+    {
+      id: user.id,
+
+      email: user.email,
+
+      isAdmin:
+        user.is_admin,
+
+      sessionId,
+    },
+
+    JWT_SECRET,
+
+    {
+      expiresIn: "180d",
+    }
+  );
+}
+
+/* ======================================================
+   SET AUTH COOKIE
+====================================================== */
+
+function setAuthCookie(
+  res,
+  token
+) {
+  res.cookie("token", token, {
+    httpOnly: true,
+
+    secure:
+      process.env.NODE_ENV ===
+      "production",
+
+    sameSite:
+      process.env.NODE_ENV ===
+      "production"
+        ? "None"
+        : "Lax",
+
+    maxAge:
+      180 *
+      24 *
+      60 *
+      60 *
+      1000,
+  });
 }
 
 /* ======================================================
@@ -60,12 +127,20 @@ export const register = async (
 
     if (!email || !password) {
       return res.status(400).json({
+        success: false,
+
         message:
           "Email & password required",
       });
     }
 
-    email = email.toLowerCase().trim();
+    email = email
+      .toLowerCase()
+      .trim();
+
+    /* =========================
+       CREATE USER
+    ========================= */
 
     const user =
       await registerUser({
@@ -83,7 +158,10 @@ export const register = async (
     ========================= */
 
     const sessionId =
-      await createSession(user, req);
+      await createSession(
+        user,
+        req
+      );
 
     /* =========================
        USER ACTIVITY
@@ -95,33 +173,29 @@ export const register = async (
     );
 
     /* =========================
-       JWT TOKEN
+       GENERATE TOKEN
     ========================= */
 
-    const token = jwt.sign(
-      {
-        id: user.id,
+    const token =
+      generateToken(
+        user,
+        sessionId
+      );
 
-        email: user.email,
+    /* =========================
+       SET COOKIE
+    ========================= */
 
-        isAdmin:
-          user.isAdmin,
-
-        sessionId,
-      },
-
-      JWT_SECRET,
-
-      {
-        expiresIn: "180d",
-      }
+    setAuthCookie(
+      res,
+      token
     );
 
     return res.status(201).json({
+      success: true,
+
       message:
         "User registered successfully",
-
-      token,
 
       sessionId,
 
@@ -134,6 +208,8 @@ export const register = async (
     );
 
     return res.status(400).json({
+      success: false,
+
       message:
         err.message ||
         "Registration failed",
@@ -150,17 +226,27 @@ export const login = async (
   res
 ) => {
   try {
-    let { email, password } =
-      req.body;
+    let {
+      email,
+      password,
+    } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({
+        success: false,
+
         message:
           "Email & password required",
       });
     }
 
-    email = email.toLowerCase().trim();
+    email = email
+      .toLowerCase()
+      .trim();
+
+    /* =========================
+       LOGIN USER
+    ========================= */
 
     const user =
       await loginUser({
@@ -173,7 +259,10 @@ export const login = async (
     ========================= */
 
     const sessionId =
-      await createSession(user, req);
+      await createSession(
+        user,
+        req
+      );
 
     /* =========================
        USER ACTIVITY
@@ -185,33 +274,29 @@ export const login = async (
     );
 
     /* =========================
-       JWT TOKEN
+       GENERATE TOKEN
     ========================= */
 
-    const token = jwt.sign(
-      {
-        id: user.id,
+    const token =
+      generateToken(
+        user,
+        sessionId
+      );
 
-        email: user.email,
+    /* =========================
+       SET COOKIE
+    ========================= */
 
-        isAdmin:
-          user.isAdmin,
-
-        sessionId,
-      },
-
-      JWT_SECRET,
-
-      {
-        expiresIn: "180d",
-      }
+    setAuthCookie(
+      res,
+      token
     );
 
     return res.json({
+      success: true,
+
       message:
         "Login successful",
-
-      token,
 
       sessionId,
 
@@ -224,6 +309,8 @@ export const login = async (
     );
 
     return res.status(401).json({
+      success: false,
+
       message:
         err.message ||
         "Login failed",
@@ -265,6 +352,10 @@ export const googleCallback = [
 
   async (req, res) => {
     try {
+      /* =========================
+         GOOGLE USER
+      ========================= */
+
       const user =
         await handleGoogleAuth(
           req.user
@@ -290,34 +381,30 @@ export const googleCallback = [
       );
 
       /* =========================
-         JWT TOKEN
+         GENERATE TOKEN
       ========================= */
 
-      const token = jwt.sign(
-        {
-          id: user.id,
+      const token =
+        generateToken(
+          user,
+          sessionId
+        );
 
-          email: user.email,
+      /* =========================
+         SET COOKIE
+      ========================= */
 
-          isAdmin:
-            user.isAdmin,
-
-          sessionId,
-        },
-
-        JWT_SECRET,
-
-        {
-          expiresIn: "180d",
-        }
+      setAuthCookie(
+        res,
+        token
       );
 
       /* =========================
-         REDIRECT
+         REDIRECT HOME
       ========================= */
 
       return res.redirect(
-        `${CLIENT_URL}/auth-success?token=${token}&sessionId=${sessionId}`
+        `${CLIENT_URL}/`
       );
     } catch (err) {
       console.error(
@@ -331,3 +418,91 @@ export const googleCallback = [
     }
   },
 ];
+
+/* ======================================================
+   GET CURRENT USER
+====================================================== */
+
+export const getMe = async (
+  req,
+  res
+) => {
+  try {
+    const user =
+      await prisma.user.findUnique({
+        where: {
+          id: req.user.id,
+        },
+
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          gender: true,
+          dob: true,
+          is_admin: true,
+          createdAt: true,
+        },
+      });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+
+        message:
+          "User not found",
+      });
+    }
+
+    return res.json({
+      success: true,
+
+      user,
+    });
+  } catch (err) {
+    console.error(
+      "Get Me Error:",
+      err
+    );
+
+    return res.status(500).json({
+      success: false,
+
+      message:
+        "Failed to fetch user",
+    });
+  }
+};
+
+/* ======================================================
+   LOGOUT
+====================================================== */
+
+export const logout = async (
+  req,
+  res
+) => {
+  try {
+    res.clearCookie("token");
+
+    return res.json({
+      success: true,
+
+      message:
+        "Logged out successfully",
+    });
+  } catch (err) {
+    console.error(
+      "Logout Error:",
+      err
+    );
+
+    return res.status(500).json({
+      success: false,
+
+      message:
+        "Logout failed",
+    });
+  }
+};
