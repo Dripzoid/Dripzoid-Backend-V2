@@ -17,8 +17,7 @@ function parseSizeStock(input) {
   }
 
   if (
-    typeof input ===
-    "object"
+    typeof input === "object"
   ) {
     return input;
   }
@@ -30,9 +29,7 @@ function parseSizeStock(input) {
     if (
       typeof parsed ===
         "object" &&
-      !Array.isArray(
-        parsed
-      )
+      !Array.isArray(parsed)
     ) {
       return parsed;
     }
@@ -42,27 +39,22 @@ function parseSizeStock(input) {
 
   String(input)
     .split(",")
-    .map((p) =>
-      p.trim()
-    )
+    .map((p) => p.trim())
     .forEach((pair) => {
       if (!pair) {
         return;
       }
 
-      const [
-        size,
-        qty,
-      ] = pair
-        .split(":")
-        .map((s) =>
-          s?.trim()
-        );
+      const [size, qty] =
+        pair
+          .split(":")
+          .map((s) =>
+            s?.trim()
+          );
 
       if (size) {
         map[size] =
-          Number(qty) ||
-          0;
+          Number(qty) || 0;
       }
     });
 
@@ -70,15 +62,51 @@ function parseSizeStock(input) {
 }
 
 /* =====================================================
+   🔥 GET CATEGORY
+===================================================== */
+
+async function getCategoryByName(
+  categoryName
+) {
+  if (!categoryName) {
+    return null;
+  }
+
+  const category =
+    await prisma.category.findFirst(
+      {
+        where: {
+          name: {
+            equals:
+              categoryName,
+            mode:
+              "insensitive",
+          },
+        },
+      }
+    );
+
+  if (!category) {
+    throw new Error(
+      "Category not found"
+    );
+  }
+
+  return category;
+}
+
+/* =====================================================
    📦 GET ALL PRODUCTS
 ===================================================== */
 
-export async function getAdminProductsService({
-  search = "",
-  page = 1,
-  limit = 20,
-  sort = "newest",
-}) {
+export async function getAdminProductsService(
+  {
+    search = "",
+    page = 1,
+    limit = 20,
+    sort = "newest",
+  }
+) {
   const currentPage =
     Number(page) || 1;
 
@@ -126,40 +154,29 @@ export async function getAdminProductsService({
      SEARCH FILTER
   ========================= */
 
-  const where =
-    search
-      ? {
-          OR: [
-            {
-              name: {
-                contains:
-                  search,
-                mode:
-                  "insensitive",
-              },
+  const where = search
+    ? {
+        OR: [
+          {
+            name: {
+              contains:
+                search,
+              mode:
+                "insensitive",
             },
+          },
 
-            {
-              category: {
-                contains:
-                  search,
-                mode:
-                  "insensitive",
-              },
+          {
+            description: {
+              contains:
+                search,
+              mode:
+                "insensitive",
             },
-
-            {
-              subcategory:
-                {
-                  contains:
-                    search,
-                  mode:
-                    "insensitive",
-                },
-            },
-          ],
-        }
-      : {};
+          },
+        ],
+      }
+    : {};
 
   /* =========================
      FETCH PRODUCTS
@@ -182,6 +199,11 @@ export async function getAdminProductsService({
         pageLimit,
 
       orderBy,
+
+      include: {
+        category:
+          true,
+      },
     }),
   ]);
 
@@ -213,6 +235,10 @@ export async function getAdminProductsService({
     products.map(
       (product) => ({
         ...product,
+
+        category:
+          product.category
+            ?.name || "",
 
         productSizes:
           productSizes.filter(
@@ -267,6 +293,11 @@ export async function getAdminProductByIdService(
       where: {
         id,
       },
+
+      include: {
+        category:
+          true,
+      },
     });
 
   if (!product) {
@@ -286,6 +317,10 @@ export async function getAdminProductByIdService(
 
   return formatProduct({
     ...product,
+
+    category:
+      product.category
+        ?.name || "",
 
     productSizes,
   });
@@ -331,6 +366,15 @@ export async function createProductService(
   }
 
   /* =========================
+     CATEGORY
+  ========================= */
+
+  const categoryRecord =
+    await getCategoryByName(
+      category
+    );
+
+  /* =========================
      SIZE STOCK
   ========================= */
 
@@ -356,8 +400,12 @@ export async function createProductService(
         name:
           name?.trim(),
 
-        category:
-          category?.trim(),
+        category: {
+          connect: {
+            id:
+              categoryRecord.id,
+          },
+        },
 
         price:
           Number(price) ||
@@ -471,13 +519,20 @@ export async function updateProductService(
       },
     });
 
-  if (
-    !existingProduct
-  ) {
+  if (!existingProduct) {
     throw new Error(
       "Product not found"
     );
   }
+
+  /* =========================
+     CATEGORY
+  ========================= */
+
+  const categoryRecord =
+    await getCategoryByName(
+      body.category
+    );
 
   /* =========================
      PARSE SIZE STOCK
@@ -510,8 +565,12 @@ export async function updateProductService(
       name:
         body.name?.trim(),
 
-      category:
-        body.category?.trim(),
+      category: {
+        connect: {
+          id:
+            categoryRecord.id,
+        },
+      },
 
       price:
         Number(
@@ -622,10 +681,6 @@ export async function updateProductService(
 export async function deleteProductService(
   id
 ) {
-  /* =========================
-     CHECK EXISTENCE
-  ========================= */
-
   const existingProduct =
     await prisma.product.findUnique({
       where: {
@@ -633,17 +688,11 @@ export async function deleteProductService(
       },
     });
 
-  if (
-    !existingProduct
-  ) {
+  if (!existingProduct) {
     throw new Error(
       "Product not found"
     );
   }
-
-  /* =========================
-     DELETE TRANSACTION
-  ========================= */
 
   await prisma.$transaction([
     prisma.productSize.deleteMany(
