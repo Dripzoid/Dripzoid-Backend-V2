@@ -1,7 +1,7 @@
 import {
-  getAvailableCouriers,
   checkServiceability,
-} from "../../lib/shiprocket.js";
+  getDeliveryEstimateService,
+} from "./shipping.service.js";
 
 /* =====================================================
    📦 DELIVERY ESTIMATE
@@ -26,34 +26,17 @@ export async function getDeliveryEstimate(
         ? 1
         : 0;
 
-    /* =========================================
-       🚚 FETCH COURIERS
-    ========================================= */
-
-    const response =
-      await getAvailableCouriers({
-        pickup_postcode:
-          process.env
-            .SHIPROCKET_PICKUP_PINCODE,
-
-        delivery_postcode:
-          pincode,
-
-        weight,
-        cod,
-      });
-
-    const couriers =
-      response?.data
-        ?.available_courier_companies ||
-      [];
-
-    /* =========================================
-       ❌ NO SERVICE
-    ========================================= */
+    const result =
+      await getDeliveryEstimateService(
+        pincode,
+        {
+          weight,
+          cod,
+        }
+      );
 
     if (
-      couriers.length === 0
+      !result.serviceable
     ) {
       return res.status(404).json({
         success: false,
@@ -65,75 +48,7 @@ export async function getDeliveryEstimate(
       });
     }
 
-    /* =========================================
-       ⚡ FASTEST COURIER
-    ========================================= */
-
-    const fastest =
-      couriers.reduce(
-        (best, current) => {
-          if (
-            !best ||
-            Number(
-              current.estimated_delivery_days
-            ) <
-              Number(
-                best.estimated_delivery_days
-              )
-          ) {
-            return current;
-          }
-
-          return best;
-        },
-        null
-      );
-
-    /* =========================================
-       ✅ RESPONSE
-    ========================================= */
-
-    return res.json({
-      success: true,
-
-      serviceable: true,
-
-      estimated_delivery:
-        fastest?.etd ||
-        `${fastest?.estimated_delivery_days} Days`,
-
-      cod_available:
-        couriers.some(
-          (c) =>
-            c.cod === 1
-        ),
-
-      courier_count:
-        couriers.length,
-
-      couriers:
-        couriers.map(
-          (courier) => ({
-            courier_name:
-              courier.courier_name,
-
-            etd:
-              courier.etd,
-
-            rate:
-              courier.rate,
-
-            rating:
-              courier.rating,
-
-            cod:
-              courier.cod,
-
-            estimated_delivery_days:
-              courier.estimated_delivery_days,
-          })
-        ),
-    });
+    return res.json(result);
   } catch (error) {
     next(error);
   }
@@ -164,10 +79,6 @@ export async function checkDeliveryServiceability(
       });
     }
 
-    /* =========================================
-       🚚 FETCH SERVICEABILITY
-    ========================================= */
-
     const couriers =
       await checkServiceability(
         pincode,
@@ -181,10 +92,6 @@ export async function checkDeliveryServiceability(
         }
       );
 
-    /* =========================================
-       ❌ NOT SERVICEABLE
-    ========================================= */
-
     if (
       couriers.length === 0
     ) {
@@ -197,10 +104,6 @@ export async function checkDeliveryServiceability(
           "Pincode not serviceable",
       });
     }
-
-    /* =========================================
-       ✅ RESPONSE
-    ========================================= */
 
     return res.json({
       success: true,
