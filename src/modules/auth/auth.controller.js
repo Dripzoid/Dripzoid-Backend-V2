@@ -63,7 +63,7 @@ function generateToken(
       email: user.email,
 
       isAdmin:
-        user.is_admin,
+        user.isAdmin,
 
       sessionId,
     },
@@ -436,12 +436,19 @@ export const getMe = async (
 
         select: {
           id: true,
+
           name: true,
+
           email: true,
+
           phone: true,
+
           gender: true,
+
           dob: true,
-          is_admin: true,
+
+          isAdmin: true,
+
           createdAt: true,
         },
       });
