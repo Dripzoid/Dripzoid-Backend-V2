@@ -328,7 +328,8 @@ export const googleAuth = (
   next
 ) => {
   const returnTo =
-    req.query.returnTo || "/";
+    req.query.returnTo ||
+    CLIENT_URL;
 
   passport.authenticate(
     "google",
@@ -340,9 +341,10 @@ export const googleAuth = (
 
       session: false,
 
-      state: encodeURIComponent(
-        returnTo
-      ),
+      state:
+        encodeURIComponent(
+          returnTo
+        ),
     }
   )(req, res, next);
 };
@@ -420,14 +422,40 @@ export const googleCallback = [
           ? decodeURIComponent(
               req.query.state
             )
-          : "/";
+          : CLIENT_URL;
+
+      console.log(
+        "Google Return To:",
+        returnTo
+      );
+
+      /* =========================
+         SECURITY CHECK
+      ========================= */
+
+      const allowedOrigins = [
+        "https://dripzoid.com",
+        "https://www.dripzoid.com",
+        "https://ask.dripzoid.com",
+        "http://localhost:5173",
+      ];
+
+      const isAllowed =
+        allowedOrigins.some(
+          (origin) =>
+            returnTo.startsWith(
+              origin
+            )
+        );
 
       /* =========================
          REDIRECT USER
       ========================= */
 
       return res.redirect(
-        `${CLIENT_URL}${returnTo}`
+        isAllowed
+          ? returnTo
+          : CLIENT_URL
       );
     } catch (err) {
       console.error(
@@ -441,7 +469,6 @@ export const googleCallback = [
     }
   },
 ];
-
 /* ======================================================
    GET CURRENT USER
 ====================================================== */
