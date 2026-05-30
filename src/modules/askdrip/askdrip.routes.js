@@ -9,8 +9,8 @@ import {
 } from "./askdrip.controller.js";
 
 import {
- authenticateToken as requireAuth,
-} from "../../middlewares/auth.middleware.js";
+  verifyInternalApi,
+} from "../../middlewares/internalApi.middleware.js";
 
 const router = Router();
 
@@ -20,19 +20,19 @@ const router = Router();
 
 router.post(
   "/conversations",
-  requireAuth,
+  verifyInternalApi,
   createConversation
 );
 
 router.get(
   "/conversations",
-  requireAuth,
+  verifyInternalApi,
   getConversations
 );
 
 router.delete(
   "/conversations/:conversationId",
-  requireAuth,
+  verifyInternalApi,
   deleteConversation
 );
 
@@ -42,13 +42,13 @@ router.delete(
 
 router.get(
   "/conversations/:conversationId/messages",
-  requireAuth,
+  verifyInternalApi,
   getMessages
 );
 
 router.post(
   "/messages",
-  requireAuth,
+  verifyInternalApi,
   createMessage
 );
 
