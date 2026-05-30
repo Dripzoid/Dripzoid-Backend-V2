@@ -23,6 +23,12 @@ enum CouponAppliesTo {
   product
 }
 
+enum MessageRole {
+  user
+  assistant
+  system
+}
+
 enum CouponTargetType {
   category
   product
@@ -95,6 +101,10 @@ model User {
   applications  Application[]
 
   auditLogs     AuditLog[]
+
+  conversations   Conversation[]
+  aiUsages        AiUsage[]
+  preferences     UserPreference?
 
   @@index([email])
   @@index([phone])
@@ -742,3 +752,119 @@ model AuditLog {
 
   createdAt     DateTime @default(now())
 }
+
+/* ======================================================
+   ASKDRIP CONVERSATIONS
+====================================================== */
+
+model Conversation {
+  id            String @id @default(uuid())
+
+  userId        String
+  user          User @relation(
+    fields: [userId],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  title         String?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  messages      Message[]
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+/* ======================================================
+   ASKDRIP MESSAGES
+====================================================== */
+
+model Message {
+  id              String   @id @default(uuid())
+
+  conversationId  String
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  role            MessageRole
+  content         String   @db.Text
+
+  model           String?
+
+  tokenCount      Int?
+
+  createdAt       DateTime @default(now())
+
+  @@index([conversationId])
+  @@index([createdAt])
+}
+
+/* ======================================================
+   ASKDRIP SAVED CHATS
+====================================================== */
+
+model SavedConversation {
+  id              String @id @default(uuid())
+
+  userId          String
+  user            User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  conversationId  String
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  createdAt       DateTime @default(now())
+
+  @@unique([userId, conversationId])
+}
+
+/* ======================================================
+   ASKDRIP USAGE
+====================================================== */
+
+model AiUsage {
+  id                String @id @default(uuid())
+
+  userId            String
+  user              User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  conversationId    String?
+  conversation       Conversation? @relation(fields: [conversationId], references: [id])
+
+  model             String
+
+  promptTokens      Int @default(0)
+  completionTokens  Int @default(0)
+  totalTokens       Int @default(0)
+
+  estimatedCost     Float @default(0)
+
+  createdAt         DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+/* ======================================================
+   ASKDRIP USER PREFERENCES
+====================================================== */
+
+model UserPreference {
+  userId            String @id
+
+  user              User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  preferredModel    String?
+
+  systemPrompt      String? @db.Text
+
+  temperature       Float? @default(0.7)
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+
+
+
