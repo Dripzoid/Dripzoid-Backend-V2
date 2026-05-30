@@ -71,7 +71,7 @@ function generateToken(
     JWT_SECRET,
 
     {
-      expiresIn: "180d",
+      expiresIn: "7d",
     }
   );
 }
@@ -98,7 +98,7 @@ function setAuthCookie(
         : "Lax",
 
     maxAge:
-      180 *
+      7 *
       24 *
       60 *
       60 *
