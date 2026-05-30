@@ -15,7 +15,7 @@ export const createConversation =
     try {
       const conversation =
         await createConversationService(
-          req.user.id,
+          req.internalUserId,
           req.body?.title
         );
 
@@ -43,7 +43,7 @@ export const getConversations =
     try {
       const conversations =
         await getConversationsService(
-          req.user.id
+          req.internalUserId
         );
 
       return res.json({
@@ -71,7 +71,7 @@ export const getMessages =
       const messages =
         await getMessagesService(
           req.params.conversationId,
-          req.user.id
+          req.internalUserId
         );
 
       return res.json({
@@ -110,7 +110,8 @@ export const createMessage =
           content,
           model,
           tokenCount,
-          userId: req.user.id,
+          userId:
+            req.internalUserId,
         });
 
       return res.status(201).json({
@@ -136,7 +137,7 @@ export const deleteConversation =
     try {
       await deleteConversationService(
         req.params.conversationId,
-        req.user.id
+        req.internalUserId
       );
 
       return res.json({
