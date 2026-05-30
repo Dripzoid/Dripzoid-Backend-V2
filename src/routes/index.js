@@ -28,6 +28,7 @@ import accountRoutes from "../modules/account/account.routes.js";
 import backupRoutes from "../modules/admin/backup.routes.js";
 import adminStatsRoutes from "../modules/admin/stats/stats.routes.js";
 import shippingRoutes from "../integrations/shiprocket/shipping.routes.js";
+import askdripRoutes from "../modules/askdrip/askdrip.routes.js";
 
 const router = express.Router();
 
@@ -116,6 +117,10 @@ router.use(
 router.use(
   "/shipping",
   shippingRoutes
+);
+router.use(
+  "/api/v1/askdrip",
+  askdripRoutes
 );
 
 export default router;
