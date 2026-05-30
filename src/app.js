@@ -20,9 +20,11 @@ const app = express();
 
 app.use(
   cors({
-    origin:
-      process.env.CLIENT_URL ||
+    origin: [
       "http://localhost:5173",
+      "https://dripzoid.com",
+      "https://ask.dripzoid.com",
+    ],
 
     credentials: true,
   })
