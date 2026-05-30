@@ -119,7 +119,7 @@ router.use(
   shippingRoutes
 );
 router.use(
-  "/api/v1/askdrip",
+  "/v1/askdrip",
   askdripRoutes
 );
 
