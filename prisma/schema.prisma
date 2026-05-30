@@ -3,13 +3,15 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
-/* ======================================================
-   ENUMS
-====================================================== */
+/**
+ * ======================================================
+ * ENUMS
+ * ======================================================
+ */
 
 enum CouponType {
   percentage
@@ -64,25 +66,27 @@ enum EntityType {
   answer
 }
 
-/* ======================================================
-   USERS
-====================================================== */
+/**
+ * ======================================================
+ * USERS
+ * ======================================================
+ */
 
 model User {
-  id            String   @id @default(uuid())
+  id String @id @default(uuid())
 
-  name          String?
-  email         String   @unique
-  phone         String?  @unique
-  password      String
+  name     String?
+  email    String  @unique
+  phone    String? @unique
+  password String
 
-  gender        String?
-  dob           DateTime?
+  gender String?
+  dob    DateTime?
 
-  isAdmin       Boolean  @default(false)
+  isAdmin Boolean @default(false)
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   addresses     Address[]
   cartItems     CartItem[]
@@ -94,777 +98,822 @@ model User {
   notifications UserNotification?
   security      UserSecurity?
 
-  reviews       Review[]
-  questions     Question[]
-  answers       Answer[]
+  reviews   Review[]
+  questions Question[]
+  answers   Answer[]
 
-  applications  Application[]
+  applications Application[]
 
-  auditLogs     AuditLog[]
+  auditLogs AuditLog[]
 
-  conversations   Conversation[]
-  aiUsages        AiUsage[]
-  preferences     UserPreference?
+  conversations      Conversation[]
+  aiUsages           AiUsage[]
+  preferences        UserPreference?
+  savedConversations SavedConversation[]
 
   @@index([email])
   @@index([phone])
 }
 
-/* ======================================================
-   ADDRESSES
-====================================================== */
+/**
+ * ======================================================
+ * ADDRESSES
+ * ======================================================
+ */
 
 model Address {
-  id          String   @id @default(uuid())
+  id String @id @default(uuid())
 
-  userId      String
-  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  label       String?
-  name        String?
-  phone       String?
+  label String?
+  name  String?
+  phone String?
 
-  line1       String?
-  line2       String?
+  line1 String?
+  line2 String?
 
-  city        String?
-  state       String?
+  city  String?
+  state String?
 
-  pincode     String?
-  country     String @default("India")
+  pincode String?
+  country String  @default("India")
 
-  isDefault   Boolean @default(false)
+  isDefault Boolean @default(false)
 
-  createdAt   DateTime @default(now())
+  createdAt DateTime @default(now())
 
-  orders       Order[]
+  orders Order[]
 
   @@index([userId])
 }
 
-/* ======================================================
-   PRODUCTS
-====================================================== */
+/**
+ * ======================================================
+ * PRODUCTS
+ * ======================================================
+ */
 
 model Product {
-  id              String   @id @default(uuid())
+  id String @id @default(uuid())
 
-  name            String
-  slug            String   @unique
+  name String
+  slug String @unique
 
-  categoryId      String?
-  category        Category? @relation(fields: [categoryId], references: [id])
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id])
 
-  subcategory     String?
+  subcategory String?
 
-  description     String?
+  description String?
 
-  price           Float
-  originalPrice   Float?
-  actualPrice     Float?
+  price         Float
+  originalPrice Float?
+  actualPrice   Float?
 
-  rating          Float?
+  rating Float?
 
-  stock           Int      @default(0)
-  sold            Int      @default(0)
+  stock Int @default(0)
+  sold  Int @default(0)
 
-  featured        Boolean  @default(false)
+  featured Boolean @default(false)
 
-  images          Json?
-  colors          Json?
+  images Json?
+  colors Json?
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  sizes           ProductSize[]
+  sizes ProductSize[]
 
-  cartItems       CartItem[]
-  wishlistItems   WishlistItem[]
+  cartItems     CartItem[]
+  wishlistItems WishlistItem[]
 
-  reviews         Review[]
-  questions       Question[]
+  reviews   Review[]
+  questions Question[]
 
-  orderItems      OrderItem[]
+  orderItems OrderItem[]
 
-  saleProducts    SaleProduct[]
+  saleProducts SaleProduct[]
 
   @@index([name])
   @@index([slug])
   @@index([createdAt])
 }
 
-/* ======================================================
-   PRODUCT SIZES
-====================================================== */
+/**
+ * ======================================================
+ * PRODUCT SIZES
+ * ======================================================
+ */
 
 model ProductSize {
-  id          String @id @default(uuid())
+  id String @id @default(uuid())
 
-  productId   String
-  product     Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  size        String
-  stock       Int @default(0)
+  size  String
+  stock Int    @default(0)
 
   @@index([productId])
 }
 
-/* ======================================================
-   CATEGORIES
-====================================================== */
+/**
+ * ======================================================
+ * CATEGORIES
+ * ======================================================
+ */
 
 model Category {
-  id            String @id @default(uuid())
+  id String @id @default(uuid())
 
-  category      CategoryType
-  subcategory   String
+  category    CategoryType
+  subcategory String
 
-  slug          String @unique
+  slug String @unique
 
-  status        CategoryStatus @default(active)
+  status CategoryStatus @default(active)
 
-  sortOrder     Int @default(0)
+  sortOrder Int @default(0)
 
-  parentId      String?
-  parent        Category? @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  parentId String?
+  parent   Category? @relation("CategoryHierarchy", fields: [parentId], references: [id])
 
-  children      Category[] @relation("CategoryHierarchy")
+  children Category[] @relation("CategoryHierarchy")
 
-  metadata      Json?
+  metadata Json?
 
-  isDeleted     Boolean @default(false)
+  isDeleted Boolean @default(false)
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  products      Product[]
+  products Product[]
 
   @@unique([category, subcategory])
 }
 
-/* ======================================================
-   CART
-====================================================== */
+/**
+ * ======================================================
+ * CART
+ * ======================================================
+ */
 
 model CartItem {
-  id          String @id @default(uuid())
+  id String @id @default(uuid())
 
-  userId      String
-  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  productId   String
-  product     Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  size        String?
-  color       String?
+  size  String?
+  color String?
 
-  quantity    Int @default(1)
+  quantity Int @default(1)
 
-  addedAt     DateTime @default(now())
+  addedAt DateTime @default(now())
 
   @@index([userId])
   @@index([productId])
 }
 
-/* ======================================================
-   WISHLIST
-====================================================== */
+/**
+ * ======================================================
+ * WISHLIST
+ * ======================================================
+ */
 
 model WishlistItem {
-  id          String @id @default(uuid())
+  id String @id @default(uuid())
 
-  userId      String
-  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  productId   String
-  product     Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  createdAt   DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@unique([userId, productId])
 }
 
-/* ======================================================
-   ORDERS
-====================================================== */
+/**
+ * ======================================================
+ * ORDERS
+ * ======================================================
+ */
 
 model Order {
-  id                    String @id @default(uuid())
+  id String @id @default(uuid())
 
-  orderNumber           String? @unique
+  orderNumber String? @unique
 
-  userId                String
-  user                  User @relation(fields: [userId], references: [id])
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
 
-  addressId             String?
-  address               Address? @relation(fields: [addressId], references: [id])
+  addressId String?
+  address   Address? @relation(fields: [addressId], references: [id])
 
-  totalAmount           Float
+  totalAmount Float
 
-  paymentMethod         String?
+  paymentMethod String?
 
-  status                String @default("pending")
+  status String @default("pending")
 
-  paymentDetails        Json?
-  shippingAddress       Json?
+  paymentDetails  Json?
+  shippingAddress Json?
 
-  itemsJson             Json?
-  shippingJson          Json?
+  itemsJson    Json?
+  shippingJson Json?
 
-  razorpayOrderId       String?
-  razorpayPaymentId     String?
+  razorpayOrderId   String?
+  razorpayPaymentId String?
 
-  razorpayAmount        Int?
+  razorpayAmount Int?
 
-  shiprocketOrderId     String?
+  shiprocketOrderId String?
 
-  expectedDeliveryFrom  DateTime?
-  expectedDeliveryTo    DateTime?
+  expectedDeliveryFrom DateTime?
+  expectedDeliveryTo   DateTime?
 
-  deliveryDate          DateTime?
+  deliveryDate DateTime?
 
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  items                 OrderItem[]
+  items OrderItem[]
 
   @@index([userId])
   @@index([status])
   @@index([createdAt])
 }
 
-/* ======================================================
-   ORDER ITEMS
-====================================================== */
+/**
+ * ======================================================
+ * ORDER ITEMS
+ * ======================================================
+ */
 
 model OrderItem {
-  id              String @id @default(uuid())
+  id String @id @default(uuid())
 
-  orderId         String
-  order           Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
-  productId       String
-  product         Product @relation(fields: [productId], references: [id])
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
 
-  quantity        Int @default(1)
+  quantity Int @default(1)
 
-  unitPrice       Float
-  price           Float?
+  unitPrice Float
+  price     Float?
 
-  selectedColor   String?
-  selectedSize    String?
+  selectedColor String?
+  selectedSize  String?
 
   @@index([orderId])
   @@index([productId])
 }
 
-/* ======================================================
-   REVIEWS
-====================================================== */
+/**
+ * ======================================================
+ * REVIEWS
+ * ======================================================
+ */
 
 model Review {
-  id            String @id @default(uuid())
+  id String @id @default(uuid())
 
-  productId     String
-  product       Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  userId        String
-  user          User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  votes         Vote[]
+  votes Vote[]
 
-  rating        Int
+  rating Int
 
-  text          String?
-  imageUrl      String?
+  text     String?
+  imageUrl String?
 
-  createdAt     DateTime @default(now())
-
+  createdAt DateTime @default(now())
 
   @@index([productId])
   @@index([userId])
 }
 
-/* ======================================================
-   QUESTIONS
-====================================================== */
+/**
+ * ======================================================
+ * QUESTIONS
+ * ======================================================
+ */
 
 model Question {
-  id            String @id @default(uuid())
+  id String @id @default(uuid())
 
-  productId     String
-  product       Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  userId        String
-  user          User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  text          String
+  text String
 
-  createdAt     DateTime @default(now())
+  createdAt DateTime @default(now())
 
-  answers       Answer[]
+  answers Answer[]
 }
 
-/* ======================================================
-   ANSWERS
-====================================================== */
+/**
+ * ======================================================
+ * ANSWERS
+ * ======================================================
+ */
 
 model Answer {
-  id            String @id @default(uuid())
+  id String @id @default(uuid())
 
-  questionId    String
-  question      Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
-  userId        String
-  user          User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  text          String
+  text String
 
-  createdAt     DateTime @default(now())
-
+  createdAt DateTime @default(now())
 }
 
-/* ======================================================
-   VOTES
-====================================================== */
+/**
+ * ======================================================
+ * VOTES
+ * ======================================================
+ */
 
 model Vote {
-  id            String @id @default(uuid())
+  id String @id @default(uuid())
 
-  entityId      String
+  entityId String
 
-  entityType    EntityType
+  entityType EntityType
 
-  userId        String
+  userId String
 
-  reviewId      String
+  reviewId String
 
-  vote          VoteType
+  vote VoteType
 
-  createdAt     DateTime @default(now())
+  createdAt DateTime @default(now())
 
   review Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
 
   @@unique([entityId, entityType, userId])
 }
 
-/* ======================================================
-   SALES
-====================================================== */
+/**
+ * ======================================================
+ * SALES
+ * ======================================================
+ */
 
 model Sale {
-  id            String @id @default(uuid())
+  id String @id @default(uuid())
 
-  name          String
+  name String
 
-  enabled       Boolean @default(true)
-  isDeleted     Boolean @default(false)
+  enabled   Boolean @default(true)
+  isDeleted Boolean @default(false)
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  products      SaleProduct[]
+  products SaleProduct[]
 }
 
 model SaleProduct {
-  id            String @id @default(uuid())
+  id String @id @default(uuid())
 
-  saleId        String
-  sale          Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  saleId String
+  sale   Sale   @relation(fields: [saleId], references: [id], onDelete: Cascade)
 
-  productId     String
-  product       Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  position      Int @default(0)
+  position Int @default(0)
 
-  createdAt     DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@unique([saleId, productId])
 }
 
-/* ======================================================
-   COUPONS
-====================================================== */
+/**
+ * ======================================================
+ * COUPONS
+ * ======================================================
+ */
 
 model Coupon {
-  id              String @id @default(uuid())
+  id String @id @default(uuid())
 
-  code            String @unique
+  code String @unique
 
-  type            CouponType
+  type CouponType
 
-  amount          Float
+  amount Float
 
-  minPurchase     Float @default(0)
+  minPurchase Float @default(0)
 
-  usageLimit      Int @default(0)
-  used            Int @default(0)
+  usageLimit Int @default(0)
+  used       Int @default(0)
 
-  startsAt        DateTime?
-  endsAt          DateTime?
+  startsAt DateTime?
+  endsAt   DateTime?
 
-  active          Boolean @default(true)
+  active Boolean @default(true)
 
-  appliesTo       CouponAppliesTo @default(all)
+  appliesTo CouponAppliesTo @default(all)
 
-  description     String?
+  description String?
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  targets         CouponTarget[]
-  usages          CouponUsage[]
-  auditLogs       CouponAuditLog[]
+  targets   CouponTarget[]
+  usages    CouponUsage[]
+  auditLogs CouponAuditLog[]
 }
 
 model CouponTarget {
-  id            String @id @default(uuid())
+  id String @id @default(uuid())
 
-  couponId      String
-  coupon        Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  couponId String
+  coupon   Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
 
-  targetType    CouponTargetType
+  targetType CouponTargetType
 
-  targetId      String
+  targetId String
 
   @@index([couponId])
 }
 
 model CouponUsage {
-  id                String @id @default(uuid())
+  id String @id @default(uuid())
 
-  couponId          String
-  coupon            Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  couponId String
+  coupon   Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
 
-  orderId           String?
-  userId            String?
+  orderId String?
+  userId  String?
 
-  discountAmount    Float
+  discountAmount Float
 
-  usedAt            DateTime @default(now())
+  usedAt DateTime @default(now())
 }
 
 model CouponAuditLog {
-  id            String @id @default(uuid())
+  id String @id @default(uuid())
 
-  couponId      String?
-  coupon        Coupon? @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  couponId String?
+  coupon   Coupon? @relation(fields: [couponId], references: [id], onDelete: SetNull)
 
-  action        String
-  message       String
+  action  String
+  message String
 
-  actor         String @default("system")
+  actor String @default("system")
 
-  createdAt     DateTime @default(now())
+  createdAt DateTime @default(now())
 }
 
-/* ======================================================
-   JOBS / APPLICATIONS
-====================================================== */
+/**
+ * ======================================================
+ * JOBS / APPLICATIONS
+ * ======================================================
+ */
 
 model Job {
-  id              String @id @default(uuid())
+  id String @id @default(uuid())
 
-  slug            String @unique
+  slug String @unique
 
-  title           String
+  title String
 
-  type            JobType
+  type JobType
 
-  location        String?
-  department      String?
+  location   String?
+  department String?
 
-  duration        String?
-  stipend         String?
+  duration String?
+  stipend  String?
 
-  status          String @default("Open")
+  status String @default("Open")
 
-  description     String?
+  description String?
 
-  createdAt       DateTime @default(now())
+  createdAt DateTime @default(now())
 
-  applications    Application[]
+  applications Application[]
 }
 
 model Application {
-  id                    String @id @default(uuid())
+  id String @id @default(uuid())
 
-  jobId                 String
-  job                   Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobId String
+  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
-  userId                String?
-  user                  User? @relation(fields: [userId], references: [id])
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
 
-  name                  String
-  email                 String
+  name  String
+  email String
 
-  phone                 String?
+  phone String?
 
-  portfolio             String?
-  cover                 String?
+  portfolio String?
+  cover     String?
 
-  resumeUrl             String?
+  resumeUrl String?
 
-  status                String @default("Applied")
+  status String @default("Applied")
 
-  certificateGenerated  Boolean @default(false)
+  certificateGenerated Boolean @default(false)
 
-  appliedAt             DateTime @default(now())
+  appliedAt DateTime @default(now())
 
-  certificates          Certificate[]
+  certificates Certificate[]
 }
 
 model Certificate {
-  id                String @id @default(uuid())
+  id String @id @default(uuid())
 
-  applicationId     String?
-  application       Application? @relation(fields: [applicationId], references: [id])
+  applicationId String?
+  application   Application? @relation(fields: [applicationId], references: [id])
 
-  certificateId     String @unique
+  certificateId String @unique
 
-  internName        String
-  role              String
+  internName String
+  role       String
 
-  startDate         DateTime?
-  endDate           DateTime?
+  startDate DateTime?
+  endDate   DateTime?
 
-  issueDate         DateTime?
+  issueDate DateTime?
 
-  certificateUrl    String?
-  qrUrl             String?
+  certificateUrl String?
+  qrUrl          String?
 
-  createdAt         DateTime @default(now())
+  createdAt DateTime @default(now())
 }
 
-/* ======================================================
-   SLIDES
-====================================================== */
+/**
+ * ======================================================
+ * SLIDES
+ * ======================================================
+ */
 
 model Slide {
-  id            String @id @default(uuid())
+  id String @id @default(uuid())
 
-  name          String
+  name String
 
-  imageUrl      String
+  imageUrl String
 
-  link          String?
+  link String?
 
-  orderIndex    Int @default(0)
+  orderIndex Int @default(0)
 
-  isDeleted     Boolean @default(false)
+  isDeleted Boolean @default(false)
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
-/* ======================================================
-   USER SETTINGS
-====================================================== */
+/**
+ * ======================================================
+ * USER SETTINGS
+ * ======================================================
+ */
 
 model UserNotification {
-  userId          String @id
+  userId String @id
 
-  user            User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  email           Boolean @default(true)
-  sms             Boolean @default(false)
-  push            Boolean @default(true)
+  email Boolean @default(true)
+  sms   Boolean @default(false)
+  push  Boolean @default(true)
 
-  marketing       Boolean @default(false)
+  marketing Boolean @default(false)
 
-  orderUpdates    Boolean @default(true)
+  orderUpdates Boolean @default(true)
 }
 
 model UserSecurity {
-  userId          String @id
+  userId String @id
 
-  user            User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  twoFaEnabled    Boolean @default(false)
+  twoFaEnabled Boolean @default(false)
 
-  backupCodes     Json?
+  backupCodes Json?
 }
 
-/* ======================================================
-   SESSIONS
-====================================================== */
+/**
+ * ======================================================
+ * SESSIONS
+ * ======================================================
+ */
 
 model UserSession {
-  id            String @id @default(uuid())
+  id String @id @default(uuid())
 
-  userId        String
-  user          User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  device        String?
-  ip            String?
+  device String?
+  ip     String?
 
-  lastActive    DateTime?
+  lastActive DateTime?
 
-  createdAt     DateTime @default(now())
+  createdAt DateTime @default(now())
 }
 
-/* ======================================================
-   USER ACTIVITY
-====================================================== */
+/**
+ * ======================================================
+ * USER ACTIVITY
+ * ======================================================
+ */
 
 model UserActivity {
-  id            String @id @default(uuid())
+  id String @id @default(uuid())
 
-  userId        String?
-  user          User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  action        String
+  action String
 
-  createdAt     DateTime @default(now())
+  createdAt DateTime @default(now())
 }
 
-/* ======================================================
-   OTP
-====================================================== */
+/**
+ * ======================================================
+ * OTP
+ * ======================================================
+ */
 
 model OtpData {
-  email           String @id
+  email String @id
 
-  otpHash         String
+  otpHash String
 
-  otpCreatedAt    BigInt
+  otpCreatedAt BigInt
 
-  attempts        Int @default(0)
+  attempts Int @default(0)
 }
 
-/* ======================================================
-   AUDIT LOGS
-====================================================== */
+/**
+ * ======================================================
+ * AUDIT LOGS
+ * ======================================================
+ */
 
 model AuditLog {
-  id            String @id @default(uuid())
+  id String @id @default(uuid())
 
-  adminId       String?
-  admin         User? @relation(fields: [adminId], references: [id])
+  adminId String?
+  admin   User?   @relation(fields: [adminId], references: [id])
 
-  actionType    String
+  actionType String
 
-  entityType    String
+  entityType String
 
-  entityId      String?
+  entityId String?
 
-  details       Json?
+  details Json?
 
-  createdAt     DateTime @default(now())
+  createdAt DateTime @default(now())
 }
 
-/* ======================================================
-   ASKDRIP CONVERSATIONS
-====================================================== */
+/**
+ * ======================================================
+ * ASKDRIP CONVERSATIONS
+ * ======================================================
+ */
 
 model Conversation {
-  id            String @id @default(uuid())
+  id String @id @default(uuid())
 
-  userId        String
-  user          User @relation(
-    fields: [userId],
-    references: [id],
-    onDelete: Cascade
-  )
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  title         String?
+  title String?
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  messages      Message[]
+  messages           Message[]
+  savedConversations SavedConversation[]
+  aiUsages           AiUsage[]
 
   @@index([userId])
   @@index([createdAt])
 }
 
-/* ======================================================
-   ASKDRIP MESSAGES
-====================================================== */
+/**
+ * ======================================================
+ * ASKDRIP MESSAGES
+ * ======================================================
+ */
 
 model Message {
-  id              String   @id @default(uuid())
+  id String @id @default(uuid())
 
-  conversationId  String
-  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
-  role            MessageRole
-  content         String   @db.Text
+  role    MessageRole
+  content String      @db.Text
 
-  model           String?
+  model String?
 
-  tokenCount      Int?
+  tokenCount Int?
 
-  createdAt       DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([conversationId])
   @@index([createdAt])
 }
 
-/* ======================================================
-   ASKDRIP SAVED CHATS
-====================================================== */
+/**
+ * ======================================================
+ * ASKDRIP SAVED CHATS
+ * ======================================================
+ */
 
 model SavedConversation {
-  id              String @id @default(uuid())
+  id String @id @default(uuid())
 
-  userId          String
-  user            User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  conversationId  String
-  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
-  createdAt       DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@unique([userId, conversationId])
 }
 
-/* ======================================================
-   ASKDRIP USAGE
-====================================================== */
+/**
+ * ======================================================
+ * ASKDRIP USAGE
+ * ======================================================
+ */
 
 model AiUsage {
-  id                String @id @default(uuid())
+  id String @id @default(uuid())
 
-  userId            String
-  user              User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  conversationId    String?
-  conversation       Conversation? @relation(fields: [conversationId], references: [id])
+  conversationId String?
+  conversation   Conversation? @relation(fields: [conversationId], references: [id])
 
-  model             String
+  model String
 
-  promptTokens      Int @default(0)
-  completionTokens  Int @default(0)
-  totalTokens       Int @default(0)
+  promptTokens     Int @default(0)
+  completionTokens Int @default(0)
+  totalTokens      Int @default(0)
 
-  estimatedCost     Float @default(0)
+  estimatedCost Float @default(0)
 
-  createdAt         DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([userId])
   @@index([createdAt])
 }
 
-/* ======================================================
-   ASKDRIP USER PREFERENCES
-====================================================== */
+/**
+ * ======================================================
+ * ASKDRIP USER PREFERENCES
+ * ======================================================
+ */
 
 model UserPreference {
-  userId            String @id
+  userId String @id
 
-  user              User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  preferredModel    String?
+  preferredModel String?
 
-  systemPrompt      String? @db.Text
+  systemPrompt String? @db.Text
 
-  temperature       Float? @default(0.7)
+  temperature Float? @default(0.7)
 
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
-
-
-
-
