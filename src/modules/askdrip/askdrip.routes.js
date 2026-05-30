@@ -9,7 +9,7 @@ import {
 } from "./askdrip.controller.js";
 
 import {
-  requireAuth,
+ authenticateToken as requireAuth,
 } from "../../middlewares/auth.middleware.js";
 
 const router = Router();
