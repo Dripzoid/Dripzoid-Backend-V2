@@ -322,7 +322,14 @@ export const login = async (
    GOOGLE AUTH
 ====================================================== */
 
-export const googleAuth =
+export const googleAuth = (
+  req,
+  res,
+  next
+) => {
+  const returnTo =
+    req.query.returnTo || "/";
+
   passport.authenticate(
     "google",
     {
@@ -332,8 +339,13 @@ export const googleAuth =
       ],
 
       session: false,
+
+      state: encodeURIComponent(
+        returnTo
+      ),
     }
-  );
+  )(req, res, next);
+};
 
 /* ======================================================
    GOOGLE CALLBACK
@@ -400,11 +412,22 @@ export const googleCallback = [
       );
 
       /* =========================
-         REDIRECT HOME
+         GET RETURN URL
+      ========================= */
+
+      const returnTo =
+        req.query.state
+          ? decodeURIComponent(
+              req.query.state
+            )
+          : "/";
+
+      /* =========================
+         REDIRECT USER
       ========================= */
 
       return res.redirect(
-        `${CLIENT_URL}/`
+        `${CLIENT_URL}${returnTo}`
       );
     } catch (err) {
       console.error(
