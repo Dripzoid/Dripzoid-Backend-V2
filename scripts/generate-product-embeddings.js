@@ -12,7 +12,6 @@ async function saveEmbedding(
   productId,
   embedding
 ) {
-
   const vector =
     `[${embedding.join(",")}]`;
 
@@ -23,14 +22,15 @@ async function saveEmbedding(
       embedding
     )
     VALUES (
-      $1,
+      $1::uuid,
       $2::vector
     )
     ON CONFLICT (product_id)
     DO UPDATE SET
       embedding =
-      EXCLUDED.embedding,
-      updated_at = NOW()
+        EXCLUDED.embedding,
+      updated_at =
+        NOW()
     `,
     productId,
     vector
@@ -55,6 +55,7 @@ async function main() {
   );
 
   let processed = 0;
+  let failed = 0;
 
   for (const product of products) {
 
@@ -70,6 +71,15 @@ async function main() {
           text
         );
 
+      if (
+        !embedding ||
+        !embedding.length
+      ) {
+        throw new Error(
+          "Empty embedding returned"
+        );
+      }
+
       await saveEmbedding(
         product.id,
         embedding
@@ -83,16 +93,34 @@ async function main() {
 
     } catch (error) {
 
+      failed++;
+
       console.error(
-        `Failed: ${product.name}`,
-        error.message
+        `❌ Failed: ${product.name}`
       );
 
+      console.error(
+        error.message
+      );
     }
   }
 
+  console.log("\n");
+
   console.log(
-    `Done. Generated ${processed} embeddings.`
+    "=================================="
+  );
+
+  console.log(
+    `✅ Generated: ${processed}`
+  );
+
+  console.log(
+    `❌ Failed: ${failed}`
+  );
+
+  console.log(
+    "=================================="
   );
 }
 
