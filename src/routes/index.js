@@ -123,7 +123,7 @@ router.use(
   "/v1/askdrip",
   askdripRoutes
 );
-app.use(
+router.use(
   "/semantic",
   semanticRoutes
 );
