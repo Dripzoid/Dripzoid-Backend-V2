@@ -9,6 +9,15 @@ export async function searchProductsSemantic(
   limit = 10
 ) {
 
+  if (!query?.trim()) {
+    return [];
+  }
+
+  const safeLimit = Math.min(
+    Number(limit) || 10,
+    50
+  );
+
   const embedding =
     await generateEmbedding(
       query
@@ -29,17 +38,18 @@ export async function searchProductsSemantic(
       LIMIT $2
       `,
       vector,
-      limit
+      safeLimit
     );
+
+  if (!matches.length) {
+    return [];
+  }
 
   const ids =
     matches.map(
-      (m) => m.product_id
+      (match) =>
+        match.product_id
     );
-
-  if (!ids.length) {
-    return [];
-  }
 
   const products =
     await prisma.product.findMany({
@@ -55,5 +65,42 @@ export async function searchProductsSemantic(
       },
     });
 
-  return products;
+  const productMap =
+    new Map(
+      products.map(
+        (product) => [
+          product.id,
+          product,
+        ]
+      )
+    );
+
+  return matches
+    .map((match) => {
+
+      const product =
+        productMap.get(
+          match.product_id
+        );
+
+      if (!product) {
+        return null;
+      }
+
+      return {
+        ...product,
+
+        semanticScore:
+          1 -
+          Number(
+            match.distance
+          ),
+
+        semanticDistance:
+          Number(
+            match.distance
+          ),
+      };
+    })
+    .filter(Boolean);
 }
