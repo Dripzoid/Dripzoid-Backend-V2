@@ -196,7 +196,6 @@ model Product {
   orderItems OrderItem[]
 
   saleProducts     SaleProduct[]
-  productEmbedding ProductEmbedding?
 
   @@index([name])
   @@index([slug])
