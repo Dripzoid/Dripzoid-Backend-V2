@@ -29,6 +29,7 @@ import backupRoutes from "../modules/admin/backup.routes.js";
 import adminStatsRoutes from "../modules/admin/stats/stats.routes.js";
 import shippingRoutes from "../integrations/shiprocket/shipping.routes.js";
 import askdripRoutes from "../modules/askdrip/askdrip.routes.js";
+import semanticRoutes from "../modules/semantic-search/semantic.routes.js";
 
 const router = express.Router();
 
@@ -121,6 +122,10 @@ router.use(
 router.use(
   "/v1/askdrip",
   askdripRoutes
+);
+app.use(
+  "/semantic",
+  semanticRoutes
 );
 
 export default router;
