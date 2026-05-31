@@ -1,11 +1,16 @@
-import { pipeline }
-  from "@xenova/transformers";
+import {
+  pipeline,
+} from "@xenova/transformers";
 
 let extractor = null;
 
-export async function getExtractor() {
+async function getExtractor() {
 
   if (!extractor) {
+
+    console.log(
+      "Loading MiniLM..."
+    );
 
     extractor =
       await pipeline(
