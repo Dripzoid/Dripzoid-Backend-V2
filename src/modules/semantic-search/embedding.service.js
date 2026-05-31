@@ -1,34 +1,39 @@
-const OLLAMA_URL =
-  "http://144.24.153.133:11434/api/embeddings";
+import { pipeline }
+  from "@xenova/transformers";
+
+let extractor = null;
+
+export async function getExtractor() {
+
+  if (!extractor) {
+
+    extractor =
+      await pipeline(
+        "feature-extraction",
+        "Xenova/all-MiniLM-L6-v2"
+      );
+  }
+
+  return extractor;
+}
 
 export async function generateEmbedding(
   text
 ) {
-  const response =
-    await fetch(
-      OLLAMA_URL,
+
+  const model =
+    await getExtractor();
+
+  const output =
+    await model(
+      text,
       {
-        method: "POST",
-        headers: {
-          "Content-Type":
-            "application/json",
-        },
-        body: JSON.stringify({
-          model:
-            "nomic-embed-text",
-          prompt: text,
-        }),
+        pooling: "mean",
+        normalize: true,
       }
     );
 
-  if (!response.ok) {
-    throw new Error(
-      `Embedding Error: ${response.status}`
-    );
-  }
-
-  const data =
-    await response.json();
-
-  return data.embedding;
+  return Array.from(
+    output.data
+  );
 }
