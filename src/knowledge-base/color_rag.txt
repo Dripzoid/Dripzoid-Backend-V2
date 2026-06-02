@@ -1,0 +1,59 @@
+Black pairs well with White, Grey, Cream, Beige, Olive, Navy, Brown, Tan, Khaki, Light Blue, Charcoal, Burgundy, Maroon, Forest Green, Camel, and Rust.
+
+White pairs well with Black, Grey, Beige, Cream, Olive, Navy, Brown, Tan, Khaki, Blue, Light Blue, Burgundy, Maroon, Forest Green, Camel, Blush Pink, and Lavender.
+
+Grey pairs well with Black, White, Navy, Olive, Beige, Cream, Brown, Charcoal, Light Blue, Burgundy, Maroon, Khaki, Forest Green, Dusty Pink, and Lavender.
+
+Cream pairs well with Black, Navy, Olive, Brown, Beige, Tan, Khaki, Burgundy, Maroon, Grey, White, Light Blue, Forest Green, Camel, Rust, and Sage Green.
+
+Beige pairs well with Black, White, Navy, Olive, Brown, Cream, Tan, Khaki, Burgundy, Grey, Light Blue, Blue, Forest Green, Sage Green, Camel, and Rust.
+
+Brown pairs well with Cream, Beige, White, Olive, Navy, Light Blue, Tan, Khaki, Burgundy, Maroon, Grey, Black, Forest Green, Camel, Rust, and Mustard.
+
+Olive pairs well with Black, White, Cream, Beige, Brown, Navy, Tan, Khaki, Grey, Light Blue, Burgundy, Maroon, Camel, Rust, Mustard, and Sage Green.
+
+Navy pairs well with White, Cream, Beige, Grey, Olive, Brown, Tan, Khaki, Light Blue, Burgundy, Maroon, Black, Forest Green, Camel, Lavender, and Blush Pink.
+
+Blue pairs well with White, Grey, Beige, Cream, Brown, Olive, Navy, Tan, Khaki, Burgundy, Black, Light Blue, Camel, Forest Green, and Sage Green.
+
+Light Blue pairs well with White, Black, Navy, Grey, Cream, Beige, Brown, Olive, Tan, Khaki, Burgundy, Maroon, Blush Pink, Lavender, and Sage Green.
+
+Tan pairs well with Black, White, Navy, Cream, Beige, Brown, Olive, Grey, Light Blue, Burgundy, Maroon, Khaki, Camel, Forest Green, and Rust.
+
+Khaki pairs well with Black, White, Navy, Cream, Beige, Brown, Olive, Grey, Light Blue, Burgundy, Maroon, Tan, Forest Green, Camel, and Rust.
+
+Burgundy pairs well with Black, White, Grey, Cream, Beige, Brown, Navy, Tan, Khaki, Olive, Light Blue, Charcoal, Camel, Mustard, and Forest Green.
+
+Maroon pairs well with Cream, Beige, Brown, Navy, Grey, White, Olive, Tan, Khaki, Light Blue, Black, Charcoal, Camel, Mustard, and Rust.
+
+Charcoal pairs well with White, Cream, Beige, Grey, Navy, Olive, Brown, Burgundy, Maroon, Light Blue, Black, Tan, Forest Green, and Camel.
+
+Forest Green pairs well with Beige, Cream, White, Black, Brown, Tan, Camel, Khaki, Navy, Light Blue, Mustard, Rust, and Burgundy.
+
+Sage Green pairs well with Cream, Beige, White, Brown, Tan, Khaki, Light Blue, Navy, Blush Pink, Lavender, and Grey.
+
+Camel pairs well with Black, White, Cream, Beige, Brown, Olive, Navy, Tan, Khaki, Burgundy, Forest Green, Rust, and Mustard.
+
+Rust pairs well with Cream, Beige, Brown, Olive, Camel, Navy, Khaki, Tan, Forest Green, and Mustard.
+
+Mustard pairs well with Navy, Brown, Olive, Camel, Charcoal, Black, Forest Green, Rust, and Cream.
+
+Blush Pink pairs well with White, Grey, Cream, Navy, Light Blue, Sage Green, Beige, and Lavender.
+
+Lavender pairs well with White, Grey, Cream, Navy, Light Blue, Sage Green, Blush Pink, and Beige.
+
+Peach pairs well with White, Cream, Beige, Light Blue, Sage Green, Grey, and Blush Pink.
+
+Mint Green pairs well with White, Cream, Grey, Beige, Light Blue, Navy, and Lavender.
+
+Teal pairs well with White, Cream, Beige, Grey, Navy, Brown, Camel, and Black.
+
+Emerald Green pairs well with Black, White, Cream, Beige, Gold, Camel, Navy, and Charcoal.
+
+Purple pairs well with White, Grey, Cream, Black, Lavender, and Beige.
+
+Red pairs well with Black, White, Grey, Navy, Beige, and Charcoal.
+
+Gold pairs well with Black, Cream, Emerald Green, Maroon, Burgundy, and Navy.
+
+Silver pairs well with Black, White, Grey, Navy, Lavender, and Blue.
