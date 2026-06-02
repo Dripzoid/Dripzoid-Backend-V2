@@ -30,6 +30,7 @@ import adminStatsRoutes from "../modules/admin/stats/stats.routes.js";
 import shippingRoutes from "../integrations/shiprocket/shipping.routes.js";
 import askdripRoutes from "../modules/askdrip/askdrip.routes.js";
 import semanticRoutes from "../modules/semantic-search/semantic.routes.js";
+import vectorRoutes from "../modules/vectors/vector.routes.js";
 
 const router = express.Router();
 
@@ -126,6 +127,10 @@ router.use(
 router.use(
   "/semantic",
   semanticRoutes
+);
+router.use(
+  "/vectors",
+  vectorRoutes
 );
 
 export default router;
