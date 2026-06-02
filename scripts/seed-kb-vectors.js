@@ -118,7 +118,7 @@ async function main() {
 
   const kbDirectory =
     path.resolve(
-      "./knowledge-base"
+      "../knowledge-base"
     );
 
   const files =
