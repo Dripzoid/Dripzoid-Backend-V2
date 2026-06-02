@@ -1,5 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
+import { fileURLToPath } from "url";
 
 import prisma from "../src/lib/prisma.js";
 
@@ -8,28 +9,83 @@ import {
 } from "../src/modules/semantic-search/embedding.service.js";
 
 /**
- * Extract facts from KB file
+ * ======================================================
+ * PATH SETUP
+ * ======================================================
  */
+
+const __filename = fileURLToPath(
+  import.meta.url
+);
+
+const __dirname = path.dirname(
+  __filename
+);
+
+const kbDirectory = path.join(
+  __dirname,
+  "../src/knowledge-base"
+);
+
+/**
+ * ======================================================
+ * ROUTE MAPPING
+ * ======================================================
+ */
+
+const ROUTE_MAP = {
+  "color_rag.txt":
+    "/color",
+
+  "fashion_knowledge.txt":
+    "/fashion",
+
+  "outfit_rag.txt":
+    "/outfit",
+
+  "recommendation_rag.txt":
+    "/recommendation",
+};
+
+/**
+ * ======================================================
+ * FACT EXTRACTION
+ * ======================================================
+ */
+
 function extractFacts(content) {
   return content
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean)
-    .filter((line) => !line.startsWith("#"));
+    .filter(
+      (line) =>
+        !line.startsWith("#")
+    );
 }
 
 /**
- * Seed a single KB file
+ * ======================================================
+ * SEED SINGLE KB
+ * ======================================================
  */
-async function seedKB(route, filePath) {
-  console.log(`\n📚 Processing ${route}`);
 
-  const content = await fs.readFile(
-    filePath,
-    "utf8"
+async function seedKB(
+  route,
+  filePath
+) {
+  console.log(
+    `\n📚 Processing ${route}`
   );
 
-  const facts = extractFacts(content);
+  const content =
+    await fs.readFile(
+      filePath,
+      "utf8"
+    );
+
+  const facts =
+    extractFacts(content);
 
   console.log(
     `Found ${facts.length} facts`
@@ -109,17 +165,42 @@ Skipped : ${skipped}
 }
 
 /**
- * Main
+ * ======================================================
+ * MAIN
+ * ======================================================
  */
+
 async function main() {
   console.log(
     "\n🚀 KB Vector Seeding Started\n"
   );
 
-  const kbDirectory =
-    path.resolve(
-      "../src/knowledge-base"
+  console.log(
+    "Working Directory:",
+    process.cwd()
+  );
+
+  console.log(
+    "KB Directory:",
+    kbDirectory
+  );
+
+  const exists =
+    await fs
+      .access(kbDirectory)
+      .then(() => true)
+      .catch(() => false);
+
+  console.log(
+    "KB Directory Exists:",
+    exists
+  );
+
+  if (!exists) {
+    throw new Error(
+      `KB directory not found: ${kbDirectory}`
     );
+  }
 
   const files =
     await fs.readdir(
@@ -138,13 +219,20 @@ async function main() {
     );
   }
 
+  console.log(
+    `Found ${txtFiles.length} KB files`
+  );
+
   for (const file of txtFiles) {
     const route =
-      "/" +
-      file.replace(
-        ".txt",
-        ""
+      ROUTE_MAP[file];
+
+    if (!route) {
+      console.warn(
+        `⚠️ Skipping unmapped file: ${file}`
       );
+      continue;
+    }
 
     const filePath =
       path.join(
