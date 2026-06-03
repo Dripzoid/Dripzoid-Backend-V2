@@ -111,17 +111,11 @@ async function seedKB(
     try {
 
       const existing =
-        await prisma.$queryRawUnsafe(
-          `
-          SELECT id
-          FROM kb_vectors
-          WHERE route = $1
-          AND fact_text = $2
-          LIMIT 1
-          `,
-          route,
-          fact
-        );
+  await prisma.$queryRawUnsafe(
+    "SELECT id FROM kb_vectors WHERE route = $1 AND fact_text = $2 LIMIT 1",
+    route,
+    fact
+  );
 
       if (
         existing.length
@@ -135,25 +129,12 @@ async function seedKB(
           fact
         );
 
-      await prisma.$executeRawUnsafe(
-        `
-        INSERT INTO kb_vectors (
-          route,
-          fact_text,
-          embedding
-        )
-        VALUES (
-          $1,
-          $2,
-          $3::jsonb
-        )
-        `,
-        route,
-        fact,
-        JSON.stringify(
-          embedding
-        )
-      );
+     await prisma.$executeRawUnsafe(
+  "INSERT INTO kb_vectors (route, fact_text, embedding) VALUES ($1, $2, $3::jsonb)",
+  route,
+  fact,
+  JSON.stringify(embedding)
+);
 
       inserted++;
 
@@ -290,12 +271,10 @@ async function main() {
   }
 
   const result =
-    await prisma.$queryRawUnsafe(
-      `
-      SELECT COUNT(*)::int AS total
-      FROM kb_vectors
-      `
-    );
+   const result =
+  await prisma.$queryRawUnsafe(
+    "SELECT COUNT(*)::int AS total FROM kb_vectors"
+  );
 
   const total =
     result[0].total;
