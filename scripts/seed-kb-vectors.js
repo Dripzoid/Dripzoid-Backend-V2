@@ -36,8 +36,8 @@ const ROUTE_MAP = {
   "color_rag.txt":
     "/color",
 
-  "fashion_knowledge.txt":
-    "/fashion",
+  "chat_rag.txt":
+    "/chat",
 
   "outfit_rag.txt":
     "/outfit",
