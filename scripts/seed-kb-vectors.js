@@ -1,3 +1,4 @@
+```js
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -62,6 +63,14 @@ function extractFacts(
     .filter(
       (line) =>
         !line.startsWith("#")
+    )
+    .filter(
+      (line) =>
+        !line.startsWith("=")
+    )
+    .filter(
+      (line) =>
+        line.length > 10
     );
 }
 
@@ -102,18 +111,21 @@ async function seedKB(
     try {
 
       const existing =
-        await prisma.kb_vectors.findFirst({
-          where: {
-            route,
-            fact_text:
-              fact,
-          },
-          select: {
-            id: true,
-          },
-        });
+        await prisma.$queryRawUnsafe(
+          `
+          SELECT id
+          FROM kb_vectors
+          WHERE route = $1
+          AND fact_text = $2
+          LIMIT 1
+          `,
+          route,
+          fact
+        );
 
-      if (existing) {
+      if (
+        existing.length
+      ) {
         skipped++;
         continue;
       }
@@ -123,14 +135,25 @@ async function seedKB(
           fact
         );
 
-      await prisma.kb_vectors.create({
-        data: {
+      await prisma.$executeRawUnsafe(
+        `
+        INSERT INTO kb_vectors (
           route,
-          fact_text:
-            fact,
-          embedding,
-        },
-      });
+          fact_text,
+          embedding
+        )
+        VALUES (
+          $1,
+          $2,
+          $3::jsonb
+        )
+        `,
+        route,
+        fact,
+        JSON.stringify(
+          embedding
+        )
+      );
 
       inserted++;
 
@@ -211,11 +234,6 @@ async function main() {
         () => false
       );
 
-  console.log(
-    "KB Directory Exists:",
-    exists
-  );
-
   if (!exists) {
     throw new Error(
       "KB directory not found: " +
@@ -235,14 +253,6 @@ async function main() {
           ".txt"
         )
     );
-
-  if (
-    !txtFiles.length
-  ) {
-    throw new Error(
-      "No KB files found"
-    );
-  }
 
   console.log(
     "Found " +
@@ -279,8 +289,16 @@ async function main() {
     );
   }
 
+  const result =
+    await prisma.$queryRawUnsafe(
+      `
+      SELECT COUNT(*)::int AS total
+      FROM kb_vectors
+      `
+    );
+
   const total =
-    await prisma.kb_vectors.count();
+    result[0].total;
 
   console.log(
     "\nKB Seeding Complete\n"
@@ -313,3 +331,4 @@ main()
 
     }
   );
+```
