@@ -19,7 +19,7 @@ export async function getAllProductVectors() {
         p.color
 
       FROM product_vectors pv
-      INNER JOIN products p
+      INNER JOIN Product p
         ON p.id = pv.product_id
     `;
 
