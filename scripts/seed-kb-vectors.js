@@ -1,4 +1,3 @@
-```js
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -10,9 +9,7 @@ import {
 } from "../src/modules/semantic-search/embedding.service.js";
 
 /**
- * ======================================================
  * PATH SETUP
- * ======================================================
  */
 
 const __filename =
@@ -32,9 +29,7 @@ const kbDirectory =
   );
 
 /**
- * ======================================================
  * ROUTE MAPPING
- * ======================================================
  */
 
 const ROUTE_MAP = {
@@ -52,9 +47,7 @@ const ROUTE_MAP = {
 };
 
 /**
- * ======================================================
  * FACT EXTRACTION
- * ======================================================
  */
 
 function extractFacts(
@@ -73,9 +66,7 @@ function extractFacts(
 }
 
 /**
- * ======================================================
  * SEED SINGLE KB
- * ======================================================
  */
 
 async function seedKB(
@@ -83,8 +74,9 @@ async function seedKB(
   filePath
 ) {
   console.log(
-  "\nProcessing " + route
-);
+    "\nProcessing " +
+    route
+  );
 
   const content =
     await fs.readFile(
@@ -98,7 +90,9 @@ async function seedKB(
     );
 
   console.log(
-    `Found ${facts.length} facts`
+    "Found " +
+    facts.length +
+    " facts"
   );
 
   let inserted = 0;
@@ -141,16 +135,17 @@ async function seedKB(
       inserted++;
 
       console.log(
-       "Inserted " +
-inserted +
-"/" +
-facts.length
+        "Inserted " +
+        inserted +
+        "/" +
+        facts.length
       );
 
     } catch (error) {
 
       console.error(
-        "Failed: " + fact
+        "Failed: " +
+        fact
       );
 
       console.error(
@@ -160,19 +155,32 @@ facts.length
     }
   }
 
-  console.log(`
-━━━━━━━━━━━━━━━━━━━━━━
-Route   : ${route}
-Inserted: ${inserted}
-Skipped : ${skipped}
-━━━━━━━━━━━━━━━━━━━━━━
-`);
+  console.log(
+    "\n----------------------"
+  );
+
+  console.log(
+    "Route   : " +
+    route
+  );
+
+  console.log(
+    "Inserted: " +
+    inserted
+  );
+
+  console.log(
+    "Skipped : " +
+    skipped
+  );
+
+  console.log(
+    "----------------------\n"
+  );
 }
 
 /**
- * ======================================================
  * MAIN
- * ======================================================
  */
 
 async function main() {
@@ -210,7 +218,8 @@ async function main() {
 
   if (!exists) {
     throw new Error(
-      `KB directory not found: ${kbDirectory}`
+      "KB directory not found: " +
+      kbDirectory
     );
   }
 
@@ -236,7 +245,9 @@ async function main() {
   }
 
   console.log(
-    `Found ${txtFiles.length} KB files`
+    "Found " +
+    txtFiles.length +
+    " KB files"
   );
 
   for (const file of txtFiles) {
@@ -249,7 +260,8 @@ async function main() {
     if (!route) {
 
       console.warn(
-        "Skipping unmapped file: " + file
+        "Skipping unmapped file: " +
+        file
       );
 
       continue;
@@ -270,12 +282,14 @@ async function main() {
   const total =
     await prisma.kb_vectors.count();
 
-  console.log(`
-KB Seeding Complete
+  console.log(
+    "\nKB Seeding Complete\n"
+  );
 
-Total KB Vectors:
-${total}
-`);
+  console.log(
+    "Total KB Vectors: " +
+    total
+  );
 }
 
 main()
@@ -299,4 +313,3 @@ main()
 
     }
   );
-```
