@@ -21,7 +21,7 @@ const app = express();
 app.use(
   cors({
     origin: [
-      "http://localhost:5173",
+      "https://askdrip-frontend.onrender.com",
       "https://dripzoid.com",
       "https://ask.dripzoid.com",
     ],
