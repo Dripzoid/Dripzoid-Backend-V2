@@ -83,8 +83,8 @@ async function seedKB(
   filePath
 ) {
   console.log(
-    `\n📚 Processing ${route}`
-  );
+  "\nProcessing " + route
+);
 
   const content =
     await fs.readFile(
@@ -141,13 +141,16 @@ async function seedKB(
       inserted++;
 
       console.log(
-        `✅ ${inserted}/${facts.length}`
+       "Inserted " +
+inserted +
+"/" +
+facts.length
       );
 
     } catch (error) {
 
       console.error(
-        `❌ Failed: ${fact}`
+        "Failed: " + fact
       );
 
       console.error(
@@ -175,7 +178,7 @@ Skipped : ${skipped}
 async function main() {
 
   console.log(
-    "\n🚀 KB Vector Seeding Started\n"
+    "\nKB Vector Seeding Started\n"
   );
 
   console.log(
@@ -246,7 +249,7 @@ async function main() {
     if (!route) {
 
       console.warn(
-        `⚠️ Skipping unmapped file: ${file}`
+        "Skipping unmapped file: " + file
       );
 
       continue;
@@ -268,7 +271,7 @@ async function main() {
     await prisma.kb_vectors.count();
 
   console.log(`
-🎉 KB Seeding Complete
+KB Seeding Complete
 
 Total KB Vectors:
 ${total}
