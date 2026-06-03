@@ -4,23 +4,30 @@ export async function getAllProductVectors() {
   const products =
     await prisma.$queryRaw`
       SELECT
-        pv.product_id,
-        pv.embedding::text AS embedding,
+       SELECT
+  pv.product_id,
+  pv.embedding::text AS embedding,
 
-        p.name,
-        p.slug,
-        p.description,
-        p.category_id,
-        p.subcategory_id,
-        p.actual_price,
-        p.discount_price,
-        p.images,
-        p.gender,
-        p.color
+  p.id,
+  p.name,
+  p.slug,
+  p.description,
+  p."categoryId",
+  p.subcategory,
+  p."actualPrice",
+  p."originalPrice",
+  p.images,
+  p.colors,
+  p.rating,
+  p.stock,
+  p.sold,
+  p.featured,
+  p."createdAt",
+  p."updatedAt"
 
-      FROM product_vectors pv
-      INNER JOIN "Product" p
-        ON p.id = pv.product_id
+FROM product_vectors pv
+INNER JOIN "Product" p
+  ON p.id = pv.product_id::text
     `;
 
   return products.map((product) => ({
