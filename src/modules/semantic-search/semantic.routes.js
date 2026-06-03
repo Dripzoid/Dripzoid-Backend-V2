@@ -2,7 +2,7 @@ import express from "express";
 
 import {
   embedText,
-} from "./embedding.controller.js";
+} from "./semantic.controller.js";
 
 const router =
   express.Router();
