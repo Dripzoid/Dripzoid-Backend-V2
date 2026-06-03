@@ -1,43 +1,46 @@
 import {
-  searchProductsSemantic,
-} from "./semantic.service.js";
+  generateEmbedding,
+} from "./embedding.service.js";
 
-export async function searchProducts(
+export async function embedText(
   req,
   res
 ) {
   try {
 
-    const {
-      query,
-      limit = 10,
-    } = req.body;
+    const { text } =
+      req.body;
 
-    const products =
-      await searchProductsSemantic(
-        query,
-        limit
+    if (!text?.trim()) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message:
+            "Text is required"
+        });
+    }
+
+    const embedding =
+      await generateEmbedding(
+        text
       );
 
-    return res.status(200).json({
+    return res.json({
       success: true,
-      count:
-        products.length,
-      products,
+      embedding,
     });
 
   } catch (error) {
 
-    console.error(
-      "Semantic Search Error:",
-      error
-    );
+    console.error(error);
 
-    return res.status(500).json({
-      success: false,
-      message:
-        error.message,
-    });
-
+    return res
+      .status(500)
+      .json({
+        success: false,
+        message:
+          "Failed to generate embedding"
+      });
   }
 }
