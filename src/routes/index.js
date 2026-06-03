@@ -125,7 +125,7 @@ router.use(
   askdripRoutes
 );
 router.use(
-  "/semantic",
+  "/embed",
   semanticRoutes
 );
 router.use(
