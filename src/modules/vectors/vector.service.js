@@ -47,7 +47,7 @@ export async function getAllProductVectors() {
         description: product.description,
         categoryId: product.categoryId,
         subcategory: product.subcategory,
-        actualPrice: product.actualPrice,
+        price: product.price,
         originalPrice: product.originalPrice,
         images: product.images,
         colors: product.colors,
