@@ -269,7 +269,6 @@ async function main() {
     );
   }
 
-  const result =
    const result =
   await prisma.$queryRawUnsafe(
     "SELECT COUNT(*)::int AS total FROM kb_vectors"
