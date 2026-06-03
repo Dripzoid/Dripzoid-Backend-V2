@@ -22,3 +22,17 @@ export async function getAllProductVectors() {
     })
   );
 }
+
+export async function getAllKBVectors() {
+
+  const vectors =
+    await prisma.$queryRaw`
+      SELECT
+        route,
+        fact_text,
+        embedding
+      FROM kb_vectors
+    `;
+
+  return vectors;
+}
