@@ -20,14 +20,12 @@ import {
 
 const OTP_VALIDITY =
   parseInt(
-    process.env
-      .OTP_EXPIRY_SECONDS
+    process.env.OTP_EXPIRY_SECONDS
   ) || 300;
 
 const OTP_MAX_ATTEMPTS =
   parseInt(
-    process.env
-      .OTP_MAX_ATTEMPTS
+    process.env.OTP_MAX_ATTEMPTS
   ) || 3;
 
 /* =====================================================
@@ -37,14 +35,12 @@ const OTP_MAX_ATTEMPTS =
 export async function sendOTPService(
   email
 ) {
-
   email =
     email
       ?.toLowerCase()
       ?.trim();
 
   if (!email) {
-
     throw new AppError(
       "Email required",
       400
@@ -66,7 +62,7 @@ export async function sendOTPService(
      💾 STORE OTP
   ========================================= */
 
-  upsertOTP({
+  await upsertOTP({
     email,
     otpHash,
     createdAt: now,
@@ -83,9 +79,7 @@ export async function sendOTPService(
 
   return {
     success: true,
-
-    message:
-      "OTP sent successfully",
+    message: "OTP sent successfully",
   };
 }
 
@@ -97,14 +91,12 @@ export async function verifyOTPService({
   email,
   otp,
 }) {
-
   email =
     email
       ?.toLowerCase()
       ?.trim();
 
   if (!email || !otp) {
-
     throw new AppError(
       "Email and OTP required",
       400
@@ -112,10 +104,9 @@ export async function verifyOTPService({
   }
 
   const row =
-    getOTPByEmail(email);
+    await getOTPByEmail(email);
 
   if (!row) {
-
     throw new AppError(
       "No OTP found",
       400
@@ -132,11 +123,9 @@ export async function verifyOTPService({
   ========================================= */
 
   if (
-    now -
-      row.otp_created_at >
+    now - row.otpCreatedAt >
     OTP_VALIDITY
   ) {
-
     throw new AppError(
       "OTP expired",
       400
@@ -151,7 +140,6 @@ export async function verifyOTPService({
     row.attempts >=
     OTP_MAX_ATTEMPTS
   ) {
-
     throw new AppError(
       "Maximum attempts reached",
       400
@@ -163,11 +151,10 @@ export async function verifyOTPService({
   ========================================= */
 
   if (
-    row.otp_hash !==
+    row.otpHash !==
     hashOTP(otp)
   ) {
-
-    incrementOTPAttempts(
+    await incrementOTPAttempts(
       email
     );
 
@@ -181,12 +168,10 @@ export async function verifyOTPService({
      ✅ DELETE VERIFIED OTP
   ========================================= */
 
-  deleteOTP(email);
+  await deleteOTP(email);
 
   return {
     success: true,
-
-    message:
-      "OTP verified successfully",
+    message: "OTP verified successfully",
   };
 }
