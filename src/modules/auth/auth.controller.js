@@ -16,6 +16,7 @@ import {
   registerUser,
   loginUser,
   handleGoogleAuth,
+  resetUserPassword,
 } from "./auth.service.js";
 
 const JWT_SECRET =
@@ -528,6 +529,61 @@ export const getMe = async (
 
       message:
         "Failed to fetch user",
+    });
+  }
+};
+
+/* ======================================================
+   RESET PASSWORD
+====================================================== */
+
+export const resetPassword = async (
+  req,
+  res
+) => {
+  try {
+    let {
+      email,
+      password,
+    } = req.body;
+
+    if (
+      !email ||
+      !password
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Email and password required",
+      });
+    }
+
+    email =
+      email
+        .toLowerCase()
+        .trim();
+
+    await resetUserPassword({
+      email,
+      password,
+    });
+
+    return res.json({
+      success: true,
+      message:
+        "Password reset successful",
+    });
+  } catch (err) {
+    console.error(
+      "Reset Password Error:",
+      err
+    );
+
+    return res.status(400).json({
+      success: false,
+      message:
+        err.message ||
+        "Password reset failed",
     });
   }
 };
