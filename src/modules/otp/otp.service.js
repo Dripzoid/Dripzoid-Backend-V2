@@ -105,6 +105,11 @@ export async function verifyOTPService({
 
   const row =
     await getOTPByEmail(email);
+  const otpCreatedAt =
+  Number(row.otpCreatedAt);
+
+  const attempts =
+  Number(row.attempts);
 
   if (!row) {
     throw new AppError(
