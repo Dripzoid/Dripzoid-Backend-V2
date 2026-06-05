@@ -104,52 +104,53 @@ export async function verifyOTPService({
   }
 
   const row =
-    await getOTPByEmail(email);
-  const otpCreatedAt =
+  await getOTPByEmail(email);
+
+if (!row) {
+  throw new AppError(
+    "No OTP found",
+    400
+  );
+}
+
+const otpCreatedAt =
   Number(row.otpCreatedAt);
 
-  const attempts =
+const attempts =
   Number(row.attempts);
 
-  if (!row) {
-    throw new AppError(
-      "No OTP found",
-      400
-    );
-  }
+const now =
+  Math.floor(
+    Date.now() / 1000
+  );
 
-  const now =
-    Math.floor(
-      Date.now() / 1000
-    );
+/* =========================================
+   ⏳ OTP EXPIRY
+========================================= */
 
-  /* =========================================
-     ⏳ OTP EXPIRY
-  ========================================= */
+if (
+  now - otpCreatedAt >
+  OTP_VALIDITY
+) {
+  throw new AppError(
+    "OTP expired",
+    400
+  );
+}
 
-  if (
-    now - row.otpCreatedAt >
-    OTP_VALIDITY
-  ) {
-    throw new AppError(
-      "OTP expired",
-      400
-    );
-  }
+/* =========================================
+   🚫 MAX ATTEMPTS
+========================================= */
 
-  /* =========================================
-     🚫 MAX ATTEMPTS
-  ========================================= */
-
-  if (
-    row.attempts >=
-    OTP_MAX_ATTEMPTS
-  ) {
-    throw new AppError(
-      "Maximum attempts reached",
-      400
-    );
-  }
+if (
+  attempts >=
+  OTP_MAX_ATTEMPTS
+) {
+  throw new AppError(
+    "Maximum attempts reached",
+    400
+  );
+}
 
   /* =========================================
      ❌ INVALID OTP
