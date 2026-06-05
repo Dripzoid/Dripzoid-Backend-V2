@@ -213,3 +213,51 @@ export async function handleGoogleAuth(
 
   return user;
 }
+
+/* ======================================================
+   RESET PASSWORD
+====================================================== */
+
+export async function resetUserPassword({
+  email,
+  password,
+}) {
+  const normalizedEmail =
+    email
+      .toLowerCase()
+      .trim();
+
+  const user =
+    await prisma.user.findUnique({
+      where: {
+        email:
+          normalizedEmail,
+      },
+    });
+
+  if (!user) {
+    throw new Error(
+      "User not found"
+    );
+  }
+
+  const hashedPassword =
+    await bcrypt.hash(
+      password,
+      10
+    );
+
+  await prisma.user.update({
+    where: {
+      email:
+        normalizedEmail,
+    },
+
+    data: {
+      password:
+        hashedPassword,
+    },
+  });
+
+  return true;
+}
