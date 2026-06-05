@@ -7,6 +7,7 @@ import {
   googleCallback,
   getMe,
   logout,
+  resetPassword,
 } from "./auth.controller.js";
 
 import { protect } from "../../middlewares/auth.middleware.js";
@@ -49,6 +50,15 @@ router.get(
   "/me",
   protect,
   getMe
+);
+
+/* =========================
+   RESET PASSWORD
+========================= */
+
+router.post(
+  "/reset-password",
+  resetPassword
 );
 
 /* =========================
