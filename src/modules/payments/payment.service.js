@@ -271,9 +271,27 @@ export async function verifyPaymentService({
 
       weight: 1,
     });
+    console.log(
+  "🚚 Shiprocket Success:",
+  JSON.stringify(
+    shiprocketOrder,
+    null,
+    2
+  )
+);
   } catch (err) {
-    console.error("Shiprocket failed:", err.message);
+    console.error(
+  "Shiprocket failed:",
+  err?.response?.data ||
+  err.message ||
+  err
+);
   }
+
+  console.log(
+  "💾 Saving Shiprocket Order ID:",
+  shiprocketOrder?.order_id
+);
 
   await confirmPayment({
     orderId,
