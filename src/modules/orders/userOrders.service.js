@@ -3,6 +3,10 @@ import prisma from "../../lib/prisma.js";
 import {
   parseImages,
 } from "../products/product.utils.js";
+import {
+  getTrackingDetails,
+  getInvoiceUrl,
+} from "../shipping/shiprocket.service.js";
 
 /* =====================================================
    📦 GET USER ORDERS
@@ -451,4 +455,81 @@ export async function verifyProductPurchaseService(
     });
 
   return !!order;
+}
+
+/* =====================================================
+   📍 TRACK ORDER
+===================================================== */
+
+export async function trackOrderService(
+  userId,
+  orderId
+) {
+  const order =
+    await prisma.order.findFirst({
+      where: {
+        id: orderId,
+        userId,
+      },
+      select: {
+        id: true,
+        awbCode: true,
+        status: true,
+      },
+    });
+
+  if (!order) {
+    throw new Error(
+      "Order not found"
+    );
+  }
+
+  if (!order.awbCode) {
+    throw new Error(
+      "Shipment not created yet"
+    );
+  }
+
+  return getTrackingDetails(
+    order.awbCode
+  );
+}
+
+/* =====================================================
+   🧾 DOWNLOAD INVOICE
+===================================================== */
+
+export async function downloadInvoiceService(
+  userId,
+  orderId
+) {
+  const order =
+    await prisma.order.findFirst({
+      where: {
+        id: orderId,
+        userId,
+      },
+      select: {
+        id: true,
+        shiprocketOrderId: true,
+      },
+    });
+
+  if (!order) {
+    throw new Error(
+      "Order not found"
+    );
+  }
+
+  if (
+    !order.shiprocketOrderId
+  ) {
+    throw new Error(
+      "Invoice unavailable"
+    );
+  }
+
+  return getInvoiceUrl(
+    order.shiprocketOrderId
+  );
 }
