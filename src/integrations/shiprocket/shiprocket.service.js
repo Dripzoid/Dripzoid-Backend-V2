@@ -190,19 +190,6 @@ export async function generateAWB({
 }
 
 /* =====================================================
-   📍 TRACK SHIPMENT
-===================================================== */
-
-export async function trackShipment(
-  awb
-) {
-  return shiprocketRequest({
-    endpoint:
-      `/courier/track/awb/${awb}`,
-  });
-}
-
-/* =====================================================
    🚛 REQUEST PICKUP
 ===================================================== */
 
