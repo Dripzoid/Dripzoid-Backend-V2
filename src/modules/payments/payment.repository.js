@@ -1,4 +1,23 @@
+// src/modules/payments/payment.repository.js
 import prisma from "../../lib/prisma.js";
+
+/* =====================================================
+   HELPERS
+===================================================== */
+
+function parseShippingAddress(shippingJson) {
+  if (!shippingJson) return {};
+
+  if (typeof shippingJson === "object") {
+    return shippingJson;
+  }
+
+  try {
+    return JSON.parse(shippingJson);
+  } catch {
+    return {};
+  }
+}
 
 /* =====================================================
    💾 CREATE ORDER
@@ -9,34 +28,16 @@ export async function createPaymentOrder({
   shippingJson,
   totalAmount,
 }) {
-  /* =========================
-     CREATE ORDER
-  ========================= */
+  const shippingAddress = parseShippingAddress(shippingJson);
 
-  const order =
-    await prisma.order.create({
-      data: {
-        userId,
-
-        shippingAddress:
-          shippingJson
-            ? typeof shippingJson ===
-              "string"
-              ? JSON.parse(
-                  shippingJson
-                )
-              : shippingJson
-            : {},
-
-        totalAmount:
-          Number(
-            totalAmount
-          ) || 0,
-
-        status:
-          "Pending",
-      },
-    });
+  const order = await prisma.order.create({
+    data: {
+      userId,
+      shippingAddress,
+      totalAmount: Number(totalAmount) || 0,
+      status: "Pending",
+    },
+  });
 
   return order.id;
 }
@@ -51,50 +52,26 @@ export async function insertOrderItem({
   quantity,
   unitPrice,
 }) {
-  /* =========================
-     VALIDATION
-  ========================= */
-
-  const product =
-    await prisma.product.findUnique({
-      where: {
-        id: productId,
-      },
-    });
+  const product = await prisma.product.findUnique({
+    where: {
+      id: productId,
+    },
+  });
 
   if (!product) {
-    throw new Error(
-      `Product not found: ${productId}`
-    );
+    throw new Error(`Product not found: ${productId}`);
   }
 
-  /* =========================
-     CREATE ORDER ITEM
-  ========================= */
+  const qty = Number(quantity) || 1;
+  const price = Number(unitPrice) || 0;
 
   return prisma.orderItem.create({
     data: {
       orderId,
-
       productId,
-
-      quantity:
-        Number(
-          quantity
-        ) || 1,
-
-      unitPrice:
-        Number(
-          unitPrice
-        ) || 0,
-
-      price:
-        (Number(
-          quantity
-        ) || 1) *
-        (Number(
-          unitPrice
-        ) || 0),
+      quantity: qty,
+      unitPrice: price,
+      price: qty * price,
     },
   });
 }
@@ -103,9 +80,7 @@ export async function insertOrderItem({
    🔍 GET ORDER
 ===================================================== */
 
-export async function getOrderById(
-  orderId
-) {
+export async function getOrderById(orderId) {
   return prisma.order.findUnique({
     where: {
       id: orderId,
@@ -114,24 +89,34 @@ export async function getOrderById(
 }
 
 /* =====================================================
+   🔍 GET ORDER BY RAZORPAY PAYMENT ID
+   Used for idempotency in hybrid flow
+===================================================== */
+
+export async function getOrderByPaymentId(paymentId) {
+  if (!paymentId) return null;
+
+  return prisma.order.findFirst({
+    where: {
+      razorpayPaymentId: paymentId,
+    },
+  });
+}
+
+/* =====================================================
    🔍 GET ORDER ITEMS
 ===================================================== */
 
-export async function getOrderItems(
-  orderId
-) {
+export async function getOrderItems(orderId) {
   return prisma.orderItem.findMany({
     where: {
       orderId,
     },
-
     include: {
       product: true,
     },
-
     orderBy: {
-      createdAt:
-        "asc",
+      createdAt: "asc",
     },
   });
 }
@@ -145,39 +130,23 @@ export async function updateRazorpayOrder({
   razorpayOrderId,
   razorpayAmount,
 }) {
-  /* =========================
-     CHECK ORDER
-  ========================= */
-
-  const existingOrder =
-    await prisma.order.findUnique({
-      where: {
-        id: orderId,
-      },
-    });
+  const existingOrder = await prisma.order.findUnique({
+    where: {
+      id: orderId,
+    },
+  });
 
   if (!existingOrder) {
-    throw new Error(
-      "Order not found"
-    );
+    throw new Error("Order not found");
   }
-
-  /* =========================
-     UPDATE ORDER
-  ========================= */
 
   return prisma.order.update({
     where: {
       id: orderId,
     },
-
     data: {
       razorpayOrderId,
-
-      razorpayAmount:
-        Number(
-          razorpayAmount
-        ) || 0,
+      razorpayAmount: Number(razorpayAmount) || 0,
     },
   });
 }
@@ -192,41 +161,24 @@ export async function confirmPayment({
   shiprocketOrderId,
   status,
 }) {
-  /* =========================
-     CHECK ORDER
-  ========================= */
-
-  const existingOrder =
-    await prisma.order.findUnique({
-      where: {
-        id: orderId,
-      },
-    });
+  const existingOrder = await prisma.order.findUnique({
+    where: {
+      id: orderId,
+    },
+  });
 
   if (!existingOrder) {
-    throw new Error(
-      "Order not found"
-    );
+    throw new Error("Order not found");
   }
-
-  /* =========================
-     UPDATE PAYMENT STATUS
-  ========================= */
 
   return prisma.order.update({
     where: {
       id: orderId,
     },
-
     data: {
       status,
-
-      razorpayPaymentId:
-        paymentId,
-
-      shiprocketOrderId:
-        shiprocketOrderId ||
-        null,
+      razorpayPaymentId: paymentId,
+      shiprocketOrderId: shiprocketOrderId || null,
     },
   });
 }
