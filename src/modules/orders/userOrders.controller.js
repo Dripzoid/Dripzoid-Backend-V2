@@ -1,12 +1,12 @@
 import {
-  getUserOrders,
-  getOrder,
-  cancelOrder,
-  reorder,
-  verifyProductPurchase,
-  trackOrder,
-  downloadInvoice,
-} from "./userOrders.controller.js";
+  getUserOrdersService,
+  getOrderByIdService,
+  cancelOrderService,
+  reorderService,
+  verifyProductPurchaseService,
+  trackOrderService,
+  downloadInvoiceService,
+} from "./userOrders.service.js";
 
 /* =====================================================
    📦 GET ALL USER ORDERS
@@ -228,23 +228,66 @@ export const verifyProductPurchase =
       });
     }
   };
-
 /* =====================================================
    📍 TRACK ORDER
 ===================================================== */
 
-router.get(
-  "/:id/track",
-  authenticateToken,
-  trackOrder
-);
+export const trackOrder =
+  async (req, res) => {
+    try {
+      const tracking =
+        await trackOrderService(
+          req.user.id,
+          req.params.id
+        );
+
+      return res.json({
+        success: true,
+        tracking,
+      });
+    } catch (err) {
+      console.error(
+        "trackOrder error:",
+        err
+      );
+
+      return res.status(400).json({
+        success: false,
+        message:
+          err.message ||
+          "Tracking failed",
+      });
+    }
+  };
 
 /* =====================================================
    🧾 DOWNLOAD INVOICE
 ===================================================== */
 
-router.get(
-  "/:id/invoice",
-  authenticateToken,
-  downloadInvoice
-);
+export const downloadInvoice =
+  async (req, res) => {
+    try {
+      const invoice =
+        await downloadInvoiceService(
+          req.user.id,
+          req.params.id
+        );
+
+      return res.json({
+        success: true,
+        invoice,
+      });
+    } catch (err) {
+      console.error(
+        "downloadInvoice error:",
+        err
+      );
+
+      return res.status(400).json({
+        success: false,
+        message:
+          err.message ||
+          "Invoice unavailable",
+      });
+    }
+  };
