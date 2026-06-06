@@ -21,12 +21,14 @@ function parseShippingAddress(shippingJson) {
 
 /* =====================================================
    💾 CREATE ORDER
+   Initial status must be Pending
 ===================================================== */
 
 export async function createPaymentOrder({
   userId,
   shippingJson,
   totalAmount,
+  status = "Pending",
 }) {
   const shippingAddress = parseShippingAddress(shippingJson);
 
@@ -35,7 +37,7 @@ export async function createPaymentOrder({
       userId,
       shippingAddress,
       totalAmount: Number(totalAmount) || 0,
-      status: "Pending",
+      status,
     },
   });
 
@@ -53,9 +55,7 @@ export async function insertOrderItem({
   unitPrice,
 }) {
   const product = await prisma.product.findUnique({
-    where: {
-      id: productId,
-    },
+    where: { id: productId },
   });
 
   if (!product) {
@@ -82,15 +82,13 @@ export async function insertOrderItem({
 
 export async function getOrderById(orderId) {
   return prisma.order.findUnique({
-    where: {
-      id: orderId,
-    },
+    where: { id: orderId },
   });
 }
 
 /* =====================================================
-   🔍 GET ORDER BY RAZORPAY PAYMENT ID
-   Used for idempotency in hybrid flow
+   🔍 GET ORDER BY PAYMENT ID
+   Used for idempotency
 ===================================================== */
 
 export async function getOrderByPaymentId(paymentId) {
@@ -109,15 +107,9 @@ export async function getOrderByPaymentId(paymentId) {
 
 export async function getOrderItems(orderId) {
   return prisma.orderItem.findMany({
-    where: {
-      orderId,
-    },
-    include: {
-      product: true,
-    },
-    orderBy: {
-      createdAt: "asc",
-    },
+    where: { orderId },
+    include: { product: true },
+    orderBy: { createdAt: "asc" },
   });
 }
 
@@ -131,9 +123,7 @@ export async function updateRazorpayOrder({
   razorpayAmount,
 }) {
   const existingOrder = await prisma.order.findUnique({
-    where: {
-      id: orderId,
-    },
+    where: { id: orderId },
   });
 
   if (!existingOrder) {
@@ -141,9 +131,7 @@ export async function updateRazorpayOrder({
   }
 
   return prisma.order.update({
-    where: {
-      id: orderId,
-    },
+    where: { id: orderId },
     data: {
       razorpayOrderId,
       razorpayAmount: Number(razorpayAmount) || 0,
@@ -159,12 +147,10 @@ export async function confirmPayment({
   orderId,
   paymentId,
   shiprocketOrderId,
-  status,
+  status = "Confirmed",
 }) {
   const existingOrder = await prisma.order.findUnique({
-    where: {
-      id: orderId,
-    },
+    where: { id: orderId },
   });
 
   if (!existingOrder) {
@@ -172,13 +158,32 @@ export async function confirmPayment({
   }
 
   return prisma.order.update({
-    where: {
-      id: orderId,
-    },
+    where: { id: orderId },
     data: {
       status,
       razorpayPaymentId: paymentId,
       shiprocketOrderId: shiprocketOrderId || null,
+    },
+  });
+}
+
+/* =====================================================
+   ⏳ EXPIRE OLD PENDING ORDERS
+===================================================== */
+
+export async function expirePendingOrdersOlderThan(minutes = 30) {
+  const cutoff = new Date(Date.now() - minutes * 60 * 1000);
+
+  return prisma.order.updateMany({
+    where: {
+      status: "Pending",
+      razorpayPaymentId: null,
+      createdAt: {
+        lt: cutoff,
+      },
+    },
+    data: {
+      status: "Expired",
     },
   });
 }
