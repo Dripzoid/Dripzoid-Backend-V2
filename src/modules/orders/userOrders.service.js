@@ -473,8 +473,8 @@ export async function trackOrderService(
       },
       select: {
         id: true,
-        awbCode: true,
         status: true,
+        shiprocketOrderId: true,
       },
     });
 
@@ -484,14 +484,16 @@ export async function trackOrderService(
     );
   }
 
-  if (!order.awbCode) {
+  if (
+    !order.shiprocketOrderId
+  ) {
     throw new Error(
       "Shipment not created yet"
     );
   }
 
   return getTrackingDetails(
-    order.awbCode
+    order.shiprocketOrderId
   );
 }
 
