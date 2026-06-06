@@ -336,6 +336,8 @@ model Order {
   razorpayAmount Int?
 
   shiprocketOrderId String?
+  shipmentId       String?
+  awbCode          String?
 
   expectedDeliveryFrom DateTime?
   expectedDeliveryTo   DateTime?
