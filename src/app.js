@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import passport from "passport";
-
+import { startPendingOrderExpiryCron } from "./cron/pendingOrderExpiry.cron.js";
 import routes from "./routes/index.js";
 
 import { configureGoogleAuth }
@@ -53,6 +53,8 @@ configureGoogleAuth();
 app.use(
   passport.initialize()
 );
+
+startPendingOrderExpiryCron();
 
 /* =====================================================
    🩺 HEALTH CHECK
