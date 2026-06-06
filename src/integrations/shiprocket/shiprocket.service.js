@@ -496,3 +496,28 @@ export async function getDeliveryEstimateService(
       ),
   };
 }
+
+/* =====================================================
+   📍 TRACK ORDER
+===================================================== */
+
+export async function getTrackingDetails(
+  awb
+) {
+  const response =
+    await trackShipment(awb);
+
+  return response;
+}
+
+/* =====================================================
+   🧾 DOWNLOAD INVOICE
+===================================================== */
+
+export async function getInvoiceUrl(
+  orderId
+) {
+  return shiprocketRequest({
+    endpoint: `/orders/print/invoice/${orderId}`,
+  });
+}
