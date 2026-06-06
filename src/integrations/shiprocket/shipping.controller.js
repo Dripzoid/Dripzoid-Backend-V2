@@ -1,8 +1,6 @@
 import {
   checkServiceability,
   getDeliveryEstimateService,
-  getTrackingDetails,
-  getInvoiceUrl,
 } from "./shiprocket.service.js";
 
 /* =====================================================
@@ -52,10 +50,6 @@ export async function getDeliveryEstimate(
       req.query.mode ||
       "Surface";
 
-    /* =========================================
-       📦 GET ESTIMATE
-    ========================================= */
-
     const result =
       await getDeliveryEstimateService(
         pincode,
@@ -82,10 +76,6 @@ export async function getDeliveryEstimate(
       )
     );
 
-    /* =========================================
-       ❌ NOT SERVICEABLE
-    ========================================= */
-
     if (
       !result ||
       !result.serviceable
@@ -99,10 +89,6 @@ export async function getDeliveryEstimate(
           "Delivery unavailable",
       });
     }
-
-    /* =========================================
-       ✅ RESPONSE
-    ========================================= */
 
     return res.status(200).json({
       success: true,
@@ -164,10 +150,6 @@ export async function checkDeliveryServiceability(
       mode = "Surface",
     } = req.body;
 
-    /* =========================================
-       ❌ VALIDATION
-    ========================================= */
-
     if (!pincode) {
       return res.status(400).json({
         success: false,
@@ -176,10 +158,6 @@ export async function checkDeliveryServiceability(
           "Pincode required",
       });
     }
-
-    /* =========================================
-       🚚 CHECK SERVICEABILITY
-    ========================================= */
 
     const couriers =
       await checkServiceability(
@@ -219,10 +197,6 @@ export async function checkDeliveryServiceability(
       )
     );
 
-    /* =========================================
-       ❌ NO COURIERS
-    ========================================= */
-
     if (
       !couriers ||
       couriers.length === 0
@@ -237,14 +211,9 @@ export async function checkDeliveryServiceability(
       });
     }
 
-    /* =========================================
-       ⚡ FASTEST COURIER
-    ========================================= */
-
     const fastest =
       couriers.reduce(
         (best, current) => {
-
           if (!best) {
             return current;
           }
@@ -267,14 +236,9 @@ export async function checkDeliveryServiceability(
         null
       );
 
-    /* =========================================
-       💰 CHEAPEST COURIER
-    ========================================= */
-
     const cheapest =
       couriers.reduce(
         (best, current) => {
-
           if (!best) {
             return current;
           }
@@ -296,10 +260,6 @@ export async function checkDeliveryServiceability(
         },
         null
       );
-
-    /* =========================================
-       ✅ RESPONSE
-    ========================================= */
 
     return res.status(200).json({
       success: true,
@@ -397,87 +357,6 @@ export async function checkDeliveryServiceability(
       error?.response?.data ||
         error.message ||
         error
-    );
-
-    next(error);
-  }
-}
-
-/* =====================================================
-   📍 TRACK SHIPMENT
-===================================================== */
-
-export async function trackOrderShipment(
-  req,
-  res,
-  next
-) {
-  try {
-    const { awb } =
-      req.params;
-
-    if (!awb) {
-      return res.status(400).json({
-        success: false,
-        message: "AWB required",
-      });
-    }
-
-    const tracking =
-      await getTrackingDetails(
-        awb
-      );
-
-    return res.status(200).json({
-      success: true,
-      tracking,
-    });
-  } catch (error) {
-    console.error(
-      "❌ Tracking Error:",
-      error?.response?.data ||
-        error.message
-    );
-
-    next(error);
-  }
-}
-
-/* =====================================================
-   🧾 DOWNLOAD INVOICE
-===================================================== */
-
-export async function downloadInvoice(
-  req,
-  res,
-  next
-) {
-  try {
-    const { orderId } =
-      req.params;
-
-    if (!orderId) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Order ID required",
-      });
-    }
-
-    const invoice =
-      await getInvoiceUrl(
-        orderId
-      );
-
-    return res.status(200).json({
-      success: true,
-      invoice,
-    });
-  } catch (error) {
-    console.error(
-      "❌ Invoice Error:",
-      error?.response?.data ||
-        error.message
     );
 
     next(error);
