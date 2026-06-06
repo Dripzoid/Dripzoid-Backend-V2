@@ -1,6 +1,8 @@
 import {
   checkServiceability,
   getDeliveryEstimateService,
+  getTrackingDetails,
+  getInvoiceUrl,
 } from "./shiprocket.service.js";
 
 /* =====================================================
@@ -395,6 +397,46 @@ export async function checkDeliveryServiceability(
       error?.response?.data ||
         error.message ||
         error
+    );
+
+    next(error);
+  }
+}
+
+/* =====================================================
+   📍 TRACK SHIPMENT
+===================================================== */
+
+export async function trackOrderShipment(
+  req,
+  res,
+  next
+) {
+  try {
+    const { awb } =
+      req.params;
+
+    if (!awb) {
+      return res.status(400).json({
+        success: false,
+        message: "AWB required",
+      });
+    }
+
+    const tracking =
+      await getTrackingDetails(
+        awb
+      );
+
+    return res.status(200).json({
+      success: true,
+      tracking,
+    });
+  } catch (error) {
+    console.error(
+      "❌ Tracking Error:",
+      error?.response?.data ||
+        error.message
     );
 
     next(error);
