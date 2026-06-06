@@ -1,10 +1,12 @@
 import {
-  getUserOrdersService,
-  getOrderByIdService,
-  cancelOrderService,
-  reorderService,
-  verifyProductPurchaseService,
-} from "./userOrders.service.js";
+  getUserOrders,
+  getOrder,
+  cancelOrder,
+  reorder,
+  verifyProductPurchase,
+  trackOrder,
+  downloadInvoice,
+} from "./userOrders.controller.js";
 
 /* =====================================================
    📦 GET ALL USER ORDERS
@@ -226,3 +228,23 @@ export const verifyProductPurchase =
       });
     }
   };
+
+/* =====================================================
+   📍 TRACK ORDER
+===================================================== */
+
+router.get(
+  "/:id/track",
+  authenticateToken,
+  trackOrder
+);
+
+/* =====================================================
+   🧾 DOWNLOAD INVOICE
+===================================================== */
+
+router.get(
+  "/:id/invoice",
+  authenticateToken,
+  downloadInvoice
+);
