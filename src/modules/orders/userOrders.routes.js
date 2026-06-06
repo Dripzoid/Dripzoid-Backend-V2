@@ -6,6 +6,8 @@ import {
   cancelOrder,
   reorder,
   verifyProductPurchase,
+  trackOrder,
+  downloadInvoice,
 } from "./userOrders.controller.js";
 
 import {
@@ -69,6 +71,26 @@ router.post(
   "/verify",
   authenticateToken,
   verifyProductPurchase
+);
+
+/* =====================================================
+   📍 TRACK ORDER
+===================================================== */
+
+router.get(
+  "/:id/track",
+  authenticateToken,
+  trackOrder
+);
+
+/* =====================================================
+   🧾 DOWNLOAD INVOICE
+===================================================== */
+
+router.get(
+  "/:id/invoice",
+  authenticateToken,
+  downloadInvoice
 );
 
 export default router;
