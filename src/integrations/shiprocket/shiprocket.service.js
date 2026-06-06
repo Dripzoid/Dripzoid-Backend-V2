@@ -497,17 +497,18 @@ export async function getDeliveryEstimateService(
   };
 }
 
+
 /* =====================================================
-   📍 TRACK ORDER
+   📍 TRACK SHIPMENT BY ORDER ID
 ===================================================== */
 
-export async function getTrackingDetails(
-  awb
+export async function trackShipment(
+  shiprocketOrderId
 ) {
-  const response =
-    await trackShipment(awb);
-
-  return response;
+  return shiprocketRequest({
+    endpoint:
+      `/courier/track/shipment/${shiprocketOrderId}`,
+  });
 }
 
 /* =====================================================
