@@ -13,7 +13,7 @@ import {
   createPaymentOrder,
   insertOrderItem,
   getOrderById,
-  getOrderByPaymentId, // add this in repository for idempotency
+  getOrderByPaymentId,
   getOrderItems,
   updateRazorpayOrder,
   confirmPayment,
@@ -39,6 +39,7 @@ function safeJsonParse(value, fallback = null) {
 
 function normalizeItems(items) {
   if (!Array.isArray(items)) return [];
+
   return items
     .map((item) => ({
       product_id: item?.product_id ?? item?.productId ?? item?.id ?? null,
@@ -87,16 +88,19 @@ function normalizeShipping(shipping) {
     state,
     pincode,
     country,
-    address: s.address ?? [line1, line2, city, state, pincode, country].filter(Boolean).join(", "),
+    address:
+      s.address ??
+      [line1, line2, city, state, pincode, country].filter(Boolean).join(", "),
   };
 }
 
 /* =====================================================
    💳 CREATE RAZORPAY ORDER
-   Hybrid flow:
-   - only creates Razorpay order
-   - stores checkout data in Razorpay notes
-   - does NOT create internal DB order yet
+   Order-first flow:
+   - create internal order immediately with Pending status
+   - insert order items
+   - create Razorpay order
+   - save Razorpay order id on internal order
 ===================================================== */
 
 export async function createRazorpayOrderService({
@@ -105,10 +109,6 @@ export async function createRazorpayOrderService({
   shipping,
   totalAmount,
 }) {
-  /* =========================================
-     VALIDATION
-  ========================================= */
-
   if (!userId) {
     throw new AppError("Unauthorized", 401);
   }
@@ -131,29 +131,39 @@ export async function createRazorpayOrderService({
     throw new AppError("Invalid amount", 400);
   }
 
-  /* =========================================
-     💳 CREATE RAZORPAY ORDER
-     Store checkout payload in notes for later
-     verification + internal order creation
-  ========================================= */
+  const orderId = await createPaymentOrder({
+    userId,
+    shippingJson: JSON.stringify(normalizedShipping),
+    totalAmount,
+    status: "Pending",
+  });
+
+  for (const item of normalizedItems) {
+    await insertOrderItem({
+      orderId,
+      productId: item.product_id,
+      quantity: item.quantity,
+      unitPrice: item.unit_price,
+    });
+  }
 
   const razorpayOrder = await createRazorpayOrder({
     amount,
-    receipt: `checkout_${userId}_${Date.now()}`,
+    receipt: `order_${orderId}`,
     notes: {
-      flow: "hybrid_checkout",
+      internalOrderId: String(orderId),
       userId: String(userId),
-      items: JSON.stringify(normalizedItems),
-      shipping: JSON.stringify(normalizedShipping),
-      totalAmount: String(totalAmount),
     },
   });
 
-  /* =========================================
-     ✅ RESPONSE
-  ========================================= */
+  await updateRazorpayOrder({
+    orderId,
+    razorpayOrderId: razorpayOrder.id,
+    razorpayAmount: razorpayOrder.amount,
+  });
 
   return {
+    internalOrderId: orderId,
     razorpayOrderId: razorpayOrder.id,
     amount: razorpayOrder.amount,
     currency: razorpayOrder.currency ?? "INR",
@@ -162,24 +172,19 @@ export async function createRazorpayOrderService({
 
 /* =====================================================
    ✅ VERIFY PAYMENT
-   Hybrid flow:
-   - verify Razorpay signature + captured payment
-   - read checkout payload from payment.notes
-   - create internal order only here
-   - insert order items
+   If payment is captured:
+   - confirm internal order
    - create Shiprocket order
-   - confirm payment
+   - set status Confirmed
+   If the order already expired, block verification
 ===================================================== */
 
 export async function verifyPaymentService({
   razorpay_payment_id,
   razorpay_order_id,
   razorpay_signature,
+  internalOrderId,
 }) {
-  /* =========================================
-     VALIDATION
-  ========================================= */
-
   if (
     !razorpay_payment_id ||
     !razorpay_order_id ||
@@ -187,10 +192,6 @@ export async function verifyPaymentService({
   ) {
     throw new AppError("Missing payment fields", 400);
   }
-
-  /* =========================================
-     🔐 VERIFY SIGNATURE FIRST
-  ========================================= */
 
   const isValid = verifyPaymentSignature({
     razorpay_order_id,
@@ -202,10 +203,6 @@ export async function verifyPaymentService({
     throw new AppError("Invalid payment signature", 400);
   }
 
-  /* =========================================
-     🔍 FETCH PAYMENT
-  ========================================= */
-
   const payment = await fetchPayment(razorpay_payment_id);
 
   if (!payment) {
@@ -216,100 +213,59 @@ export async function verifyPaymentService({
     throw new AppError("Payment not captured", 400);
   }
 
-  /* =========================================
-     🧾 EXTRACT CHECKOUT DATA FROM NOTES
-  ========================================= */
-
   const notes = payment.notes || {};
+  const orderId =
+    internalOrderId ?? notes.internalOrderId ?? notes.orderId ?? null;
 
-  const userId = notes.userId ?? null;
-  const items = normalizeItems(safeJsonParse(notes.items, []));
-  const shipping = normalizeShipping(safeJsonParse(notes.shipping, {}));
-  const totalAmount = Number(notes.totalAmount ?? 0);
-
-  if (!userId) {
-    throw new AppError("Missing checkout user data", 400);
+  if (!orderId) {
+    throw new AppError("Missing internal order id", 400);
   }
 
-  if (!items.length) {
-    throw new AppError("Missing checkout items", 400);
-  }
-
-  if (!totalAmount || totalAmount <= 0) {
-    throw new AppError("Invalid checkout total", 400);
-  }
-
-  /* =========================================
-     🔁 IDEMPOTENCY
-     If this payment already created an order,
-     return existing result instead of duplicating.
-  ========================================= */
-
-  const existing = getOrderByPaymentId
-    ? getOrderByPaymentId(razorpay_payment_id)
-    : null;
-
-  if (existing) {
+  const alreadyProcessed = await getOrderByPaymentId(razorpay_payment_id);
+  if (alreadyProcessed?.status === "Confirmed") {
     return {
       message: "Already processed",
-      internalOrderId: existing.id,
-      shiprocketOrderId: existing.shiprocket_order_id ?? null,
-      status: existing.status ?? "Confirmed",
+      internalOrderId: alreadyProcessed.id,
+      shiprocketOrderId: alreadyProcessed.shiprocketOrderId ?? null,
+      status: "Confirmed",
     };
   }
 
-  /* =========================================
-     💾 CREATE INTERNAL ORDER NOW
-     (after successful payment verification)
-  ========================================= */
+  const order = await getOrderById(orderId);
 
-  const orderId = createPaymentOrder({
-    userId,
-    shippingJson: JSON.stringify(shipping),
-    totalAmount,
-  });
-
-  /* =========================================
-     💾 INSERT ORDER ITEMS
-  ========================================= */
-
-  for (const item of items) {
-    insertOrderItem({
-      orderId,
-      productId: item.product_id,
-      quantity: item.quantity,
-      unitPrice: item.unit_price,
-    });
+  if (!order) {
+    throw new AppError("Order not found", 404);
   }
 
-  /* =========================================
-     💾 SAVE RAZORPAY METADATA ON INTERNAL ORDER
-  ========================================= */
+  if (order.status === "Confirmed") {
+    return {
+      message: "Already processed",
+      internalOrderId: order.id,
+      shiprocketOrderId: order.shiprocketOrderId ?? null,
+      status: "Confirmed",
+    };
+  }
 
-  updateRazorpayOrder({
-    orderId,
-    razorpayOrderId: razorpay_order_id,
-    razorpayAmount: payment.amount ?? Math.round(totalAmount * 100),
-  });
+  if (order.status === "Expired") {
+    throw new AppError("Order expired", 410);
+  }
 
-  /* =========================================
-     🚚 CREATE SHIPROCKET ORDER
-  ========================================= */
+  const items = await getOrderItems(orderId);
+  const shipping = order.shippingAddress || {};
 
   let shiprocketOrder = null;
 
   try {
-    const addressLine = [
-      shipping.line1,
-      shipping.line2,
-    ].filter(Boolean).join(", ") || shipping.address || "N/A";
+    const addressLine = [shipping.line1, shipping.line2]
+      .filter(Boolean)
+      .join(", ") || shipping.address || "N/A";
 
     shiprocketOrder = await createShiprocketOrder({
       order_id: `ORDER-${orderId}`,
       order_date: new Date().toISOString().slice(0, 19).replace("T", " "),
       pickup_location: process.env.SHIPROCKET_PICKUP || "PRIMARY",
 
-      billing_customer_name: shipping.name || "Customer",
+      billing_customer_name: shipping.name || shipping.customerName || "Customer",
       billing_address: addressLine,
       billing_city: shipping.city || "",
       billing_pincode: shipping.pincode || "",
@@ -320,13 +276,13 @@ export async function verifyPaymentService({
 
       shipping_is_billing: true,
       payment_method: "Prepaid",
-      sub_total: totalAmount,
+      sub_total: Number(order.totalAmount) || 0,
 
       order_items: items.map((i) => ({
-        name: i.name || `Product ${i.product_id}`,
-        sku: i.sku || `SKU-${i.product_id}`,
+        name: i.product?.name || i.product?.title || `Product ${i.productId}`,
+        sku: i.product?.sku || `SKU-${i.productId}`,
         units: i.quantity,
-        selling_price: i.unit_price,
+        selling_price: i.unitPrice,
       })),
 
       weight: 1,
@@ -335,25 +291,17 @@ export async function verifyPaymentService({
     console.error("Shiprocket failed:", err.message);
   }
 
-  /* =========================================
-     💾 CONFIRM PAYMENT / FINALIZE ORDER
-  ========================================= */
-
-  confirmPayment({
+  await confirmPayment({
     orderId,
     paymentId: razorpay_payment_id,
     shiprocketOrderId: shiprocketOrder?.order_id || null,
-    status: shiprocketOrder ? "Confirmed" : "Processing",
+    status: "Confirmed",
   });
-
-  /* =========================================
-     ✅ RESPONSE
-  ========================================= */
 
   return {
     message: "Payment verified successfully",
     internalOrderId: orderId,
     shiprocketOrderId: shiprocketOrder?.order_id || null,
-    status: shiprocketOrder ? "Confirmed" : "Processing",
+    status: "Confirmed",
   };
 }
