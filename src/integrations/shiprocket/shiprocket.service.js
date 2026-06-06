@@ -486,16 +486,18 @@ export async function getDeliveryEstimateService(
 
 
 /* =====================================================
-   📍 TRACK SHIPMENT BY ORDER ID
+   📍 TRACK ORDER
 ===================================================== */
 
-export async function trackShipment(
+export async function getTrackingDetails(
   shiprocketOrderId
 ) {
-  return shiprocketRequest({
-    endpoint:
-      `/courier/track/shipment/${shiprocketOrderId}`,
-  });
+  const response =
+    await trackShipment(
+      shiprocketOrderId
+    );
+
+  return response;
 }
 
 /* =====================================================
