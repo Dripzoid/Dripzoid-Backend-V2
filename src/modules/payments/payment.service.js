@@ -5,6 +5,7 @@ import {
   createRazorpayOrder,
   verifyPaymentSignature,
   fetchPayment,
+  buildRazorpayReceipt,
 } from "../../integrations/razorpay/razorpay.service.js";
 
 import { createShiprocketOrder } from "../../integrations/shiprocket/shiprocket.service.js";
@@ -39,7 +40,6 @@ function safeJsonParse(value, fallback = null) {
 
 function normalizeItems(items) {
   if (!Array.isArray(items)) return [];
-
   return items
     .map((item) => ({
       product_id: item?.product_id ?? item?.productId ?? item?.id ?? null,
@@ -96,11 +96,6 @@ function normalizeShipping(shipping) {
 
 /* =====================================================
    💳 CREATE RAZORPAY ORDER
-   Order-first flow:
-   - create internal order immediately with Pending status
-   - insert order items
-   - create Razorpay order
-   - save Razorpay order id on internal order
 ===================================================== */
 
 export async function createRazorpayOrderService({
@@ -118,7 +113,6 @@ export async function createRazorpayOrderService({
   }
 
   const normalizedItems = normalizeItems(items);
-
   if (!normalizedItems.length) {
     throw new AppError("No valid items provided", 400);
   }
@@ -126,12 +120,11 @@ export async function createRazorpayOrderService({
   const normalizedShipping = normalizeShipping(shipping);
 
   const amount = Math.round(Number(totalAmount) * 100);
-
   if (!amount || amount <= 0) {
     throw new AppError("Invalid amount", 400);
   }
 
-  const orderId = await createPaymentOrder({
+  const internalOrderId = await createPaymentOrder({
     userId,
     shippingJson: JSON.stringify(normalizedShipping),
     totalAmount,
@@ -140,30 +133,32 @@ export async function createRazorpayOrderService({
 
   for (const item of normalizedItems) {
     await insertOrderItem({
-      orderId,
+      orderId: internalOrderId,
       productId: item.product_id,
       quantity: item.quantity,
       unitPrice: item.unit_price,
     });
   }
 
+  const receipt = buildRazorpayReceipt(internalOrderId);
+
   const razorpayOrder = await createRazorpayOrder({
     amount,
-    receipt: `order_${orderId}`,
+    receipt,
     notes: {
-      internalOrderId: String(orderId),
+      internalOrderId: String(internalOrderId),
       userId: String(userId),
     },
   });
 
   await updateRazorpayOrder({
-    orderId,
+    orderId: internalOrderId,
     razorpayOrderId: razorpayOrder.id,
     razorpayAmount: razorpayOrder.amount,
   });
 
   return {
-    internalOrderId: orderId,
+    internalOrderId,
     razorpayOrderId: razorpayOrder.id,
     amount: razorpayOrder.amount,
     currency: razorpayOrder.currency ?? "INR",
@@ -172,11 +167,6 @@ export async function createRazorpayOrderService({
 
 /* =====================================================
    ✅ VERIFY PAYMENT
-   If payment is captured:
-   - confirm internal order
-   - create Shiprocket order
-   - set status Confirmed
-   If the order already expired, block verification
 ===================================================== */
 
 export async function verifyPaymentService({
@@ -185,11 +175,7 @@ export async function verifyPaymentService({
   razorpay_signature,
   internalOrderId,
 }) {
-  if (
-    !razorpay_payment_id ||
-    !razorpay_order_id ||
-    !razorpay_signature
-  ) {
+  if (!razorpay_payment_id || !razorpay_order_id || !razorpay_signature) {
     throw new AppError("Missing payment fields", 400);
   }
 
@@ -204,7 +190,6 @@ export async function verifyPaymentService({
   }
 
   const payment = await fetchPayment(razorpay_payment_id);
-
   if (!payment) {
     throw new AppError("Payment not found", 404);
   }
@@ -214,8 +199,7 @@ export async function verifyPaymentService({
   }
 
   const notes = payment.notes || {};
-  const orderId =
-    internalOrderId ?? notes.internalOrderId ?? notes.orderId ?? null;
+  const orderId = internalOrderId ?? notes.internalOrderId ?? null;
 
   if (!orderId) {
     throw new AppError("Missing internal order id", 400);
@@ -232,7 +216,6 @@ export async function verifyPaymentService({
   }
 
   const order = await getOrderById(orderId);
-
   if (!order) {
     throw new AppError("Order not found", 404);
   }
@@ -256,9 +239,10 @@ export async function verifyPaymentService({
   let shiprocketOrder = null;
 
   try {
-    const addressLine = [shipping.line1, shipping.line2]
-      .filter(Boolean)
-      .join(", ") || shipping.address || "N/A";
+    const addressLine =
+      [shipping.line1, shipping.line2].filter(Boolean).join(", ") ||
+      shipping.address ||
+      "N/A";
 
     shiprocketOrder = await createShiprocketOrder({
       order_id: `ORDER-${orderId}`,
