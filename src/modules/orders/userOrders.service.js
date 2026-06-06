@@ -6,7 +6,7 @@ import {
 import {
   getTrackingDetails,
   getInvoiceUrl,
-} from "../shipping/shiprocket.service.js";
+} from "../../integrations/shipping/shiprocket.service.js";
 
 /* =====================================================
    📦 GET USER ORDERS
