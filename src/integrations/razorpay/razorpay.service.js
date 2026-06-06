@@ -4,27 +4,27 @@ import crypto from "crypto";
 import { IntegrationError } from "../../errors/IntegrationError.js";
 
 /* =====================================================
-   VALIDATE ENV
+   ENV CHECK
 ===================================================== */
 
 function assertRazorpayConfig() {
   if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
     throw new IntegrationError(
       "Razorpay credentials are missing",
-      500,
       {
         keyIdPresent: Boolean(process.env.RAZORPAY_KEY_ID),
         keySecretPresent: Boolean(process.env.RAZORPAY_KEY_SECRET),
-      }
+      },
+      500
     );
   }
 }
 
+assertRazorpayConfig();
+
 /* =====================================================
    💳 RAZORPAY CLIENT
 ===================================================== */
-
-assertRazorpayConfig();
 
 export const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
@@ -35,14 +35,27 @@ export const razorpay = new Razorpay({
    HELPERS
 ===================================================== */
 
-function toIntegrationDetails(err) {
+function toErrorDetails(err) {
   return {
     message: err?.message ?? "Unknown Razorpay error",
     code: err?.code ?? null,
     statusCode: err?.statusCode ?? null,
     responseData: err?.response?.data ?? null,
-    error: err,
+    raw: err,
   };
+}
+
+export function buildRazorpayReceipt(orderId = "") {
+  const compactOrderId = String(orderId)
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .slice(0, 20);
+
+  const timePart = Date.now().toString(36).slice(-8);
+  const randPart = crypto.randomBytes(3).toString("hex");
+
+  const receipt = `dz_${compactOrderId}_${timePart}_${randPart}`;
+
+  return receipt.slice(0, 40);
 }
 
 /* =====================================================
@@ -62,13 +75,15 @@ export async function createRazorpayOrder({
       notes,
     });
   } catch (err) {
+    const details = toErrorDetails(err);
+
     console.error("Razorpay Create Order Error (full):", err);
-    console.error("Razorpay Create Order Error details:", toIntegrationDetails(err));
+    console.error("Razorpay Create Order Error details:", details);
 
     throw new IntegrationError(
       "Failed to create Razorpay order",
-      502,
-      toIntegrationDetails(err)
+      details,
+      502
     );
   }
 }
@@ -98,13 +113,15 @@ export async function fetchPayment(paymentId) {
   try {
     return await razorpay.payments.fetch(paymentId);
   } catch (err) {
+    const details = toErrorDetails(err);
+
     console.error("Fetch Payment Error (full):", err);
-    console.error("Fetch Payment Error details:", toIntegrationDetails(err));
+    console.error("Fetch Payment Error details:", details);
 
     throw new IntegrationError(
       "Failed to fetch payment",
-      502,
-      toIntegrationDetails(err)
+      details,
+      502
     );
   }
 }
