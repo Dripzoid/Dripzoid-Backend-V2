@@ -484,7 +484,18 @@ export async function getDeliveryEstimateService(
   };
 }
 
+/* =====================================================
+   📍 TRACK SHIPMENT BY SHIPROCKET ORDER ID
+===================================================== */
 
+export async function trackShipment(
+  shiprocketOrderId
+) {
+  return shiprocketRequest({
+    endpoint:
+      `/courier/track/shipment/${shiprocketOrderId}`,
+  });
+}
 /* =====================================================
    📍 TRACK ORDER
 ===================================================== */
