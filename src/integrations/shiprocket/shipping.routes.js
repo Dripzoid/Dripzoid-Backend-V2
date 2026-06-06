@@ -3,8 +3,6 @@ import express from "express";
 import {
   getDeliveryEstimate,
   checkDeliveryServiceability,
-  trackOrderShipment,
-  downloadInvoice,
 } from "./shipping.controller.js";
 
 const router = express.Router();
@@ -25,24 +23,6 @@ router.get(
 router.post(
   "/serviceability",
   checkDeliveryServiceability
-);
-
-/* =====================================================
-   📍 TRACK ORDER
-===================================================== */
-
-router.get(
-  "/track/:awb",
-  trackOrderShipment
-);
-
-/* =====================================================
-   🧾 DOWNLOAD INVOICE
-===================================================== */
-
-router.get(
-  "/invoice/:orderId",
-  downloadInvoice
 );
 
 export default router;
