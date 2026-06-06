@@ -295,9 +295,24 @@ export async function attachShipmentToOrderService({
     },
 
     data: {
-      shiprocketOrderId,
-      shipmentId,
-      awbCode,
+      shiprocketOrderId:
+        shiprocketOrderId !== null &&
+        shiprocketOrderId !== undefined
+          ? String(
+              shiprocketOrderId
+            )
+          : null,
+
+      shipmentId:
+        shipmentId !== null &&
+        shipmentId !== undefined
+          ? String(
+              shipmentId
+            )
+          : null,
+
+      awbCode:
+        awbCode || null,
     },
   });
 
