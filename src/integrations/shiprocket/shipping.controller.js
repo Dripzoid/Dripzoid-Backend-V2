@@ -442,3 +442,44 @@ export async function trackOrderShipment(
     next(error);
   }
 }
+
+/* =====================================================
+   🧾 DOWNLOAD INVOICE
+===================================================== */
+
+export async function downloadInvoice(
+  req,
+  res,
+  next
+) {
+  try {
+    const { orderId } =
+      req.params;
+
+    if (!orderId) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Order ID required",
+      });
+    }
+
+    const invoice =
+      await getInvoiceUrl(
+        orderId
+      );
+
+    return res.status(200).json({
+      success: true,
+      invoice,
+    });
+  } catch (error) {
+    console.error(
+      "❌ Invoice Error:",
+      error?.response?.data ||
+        error.message
+    );
+
+    next(error);
+  }
+}
