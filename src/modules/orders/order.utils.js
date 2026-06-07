@@ -11,7 +11,6 @@ export function normalizeShippingAddress(
 
     name:
       shippingAddress?.name ||
-
       `${shippingAddress?.first_name || ""}
        ${shippingAddress?.last_name || ""}`
         .trim(),
@@ -22,8 +21,7 @@ export function normalizeShippingAddress(
       "N/A",
 
     line2:
-      shippingAddress?.line2 ||
-      "",
+      shippingAddress?.line2 || "",
 
     city:
       shippingAddress?.city ||
@@ -45,6 +43,11 @@ export function normalizeShippingAddress(
       shippingAddress?.phone ||
       user?.phone ||
       "0000000000",
+
+    email:
+      shippingAddress?.email ||
+      user?.email ||
+      "",
   };
 }
 
@@ -150,13 +153,12 @@ export function buildShiprocketPayload({
   paymentMethod,
   totalAmount,
 }) {
-
   const fullName =
-    shippingAddress?.name ||
+    shippingAddress?.name?.trim() ||
     "Customer";
 
   const nameParts =
-    fullName.trim().split(" ");
+    fullName.split(/\s+/);
 
   const firstName =
     nameParts[0] ||
@@ -168,6 +170,29 @@ export function buildShiprocketPayload({
           .slice(1)
           .join(" ")
       : "";
+
+  const isCOD =
+    String(
+      paymentMethod || ""
+    ).toUpperCase() === "COD";
+
+  /* =========================================
+     COD CHARGE
+  ========================================= */
+
+  const codCharge =
+    isCOD ? 25 : 0;
+
+  /* =========================================
+     PRODUCT TOTAL
+  ========================================= */
+
+  const productTotal =
+    Math.max(
+      0,
+      Number(totalAmount || 0) -
+        codCharge
+    );
 
   return {
     order_id:
@@ -190,6 +215,10 @@ export function buildShiprocketPayload({
           .SHIPROCKET_CHANNEL_ID || 1
       ),
 
+    /* =====================================
+       BILLING DETAILS
+    ===================================== */
+
     billing_customer_name:
       firstName,
 
@@ -197,60 +226,97 @@ export function buildShiprocketPayload({
       lastName,
 
     billing_address:
-      shippingAddress.line1,
+      shippingAddress?.line1 ||
+      "N/A",
 
     billing_address_2:
-      shippingAddress.line2,
+      shippingAddress?.line2 ||
+      "",
 
     billing_city:
-      shippingAddress.city,
+      shippingAddress?.city ||
+      "N/A",
 
     billing_pincode:
-      shippingAddress.pincode,
+      shippingAddress?.pincode ||
+      "000000",
 
     billing_state:
-      shippingAddress.state,
+      shippingAddress?.state ||
+      "N/A",
 
     billing_country:
-      shippingAddress.country,
+      shippingAddress?.country ||
+      "India",
 
     billing_email:
-      shippingAddress.email ||
-      "noreply@example.com",
+      shippingAddress?.email ||
+      "",
 
     billing_phone:
-      shippingAddress.phone,
+      shippingAddress?.phone ||
+      "0000000000",
+
+    /* =====================================
+       SHIPPING DETAILS
+    ===================================== */
 
     shipping_is_billing:
       true,
 
+    /* =====================================
+       ORDER ITEMS
+    ===================================== */
+
     order_items:
       items.map((ni) => ({
-        name: ni.name,
+        name:
+          ni.name,
 
-        sku: ni.sku,
+        sku:
+          ni.sku,
 
         units:
-          ni.quantity,
+          Number(
+            ni.quantity
+          ),
 
         selling_price:
-          ni.unit_price,
+          Number(
+            ni.unit_price
+          ),
       })),
 
+    /* =====================================
+       PAYMENT
+    ===================================== */
+
     payment_method:
-      paymentMethod?.toUpperCase() ===
-      "COD"
+      isCOD
         ? "COD"
         : "Prepaid",
 
+    /* =====================================
+       PRICING
+    ===================================== */
+
     sub_total:
-      Number(totalAmount) || 0,
+      productTotal,
+
+    transaction_charges:
+      codCharge,
+
+    shipping_charges: 0,
 
     total_discount: 0,
+
+    /* =====================================
+       PACKAGE DIMENSIONS
+    ===================================== */
 
     length: 15,
     breadth: 10,
     height: 5,
-    weight: 1,
+    weight: 0.5,
   };
 }
