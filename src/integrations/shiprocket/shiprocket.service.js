@@ -511,14 +511,26 @@ export async function getTrackingDetails(
   return response;
 }
 
+
 /* =====================================================
-   🧾 DOWNLOAD INVOICE
+   🧾 GENERATE / DOWNLOAD INVOICE
 ===================================================== */
 
 export async function getInvoiceUrl(
-  orderId
+  shiprocketOrderId
 ) {
   return shiprocketRequest({
-    endpoint: `/orders/print/invoice/${orderId}`,
+    method: "POST",
+
+    endpoint:
+      "/orders/print/invoice",
+
+    data: {
+      ids: [
+        Number(
+          shiprocketOrderId
+        ),
+      ],
+    },
   });
 }
