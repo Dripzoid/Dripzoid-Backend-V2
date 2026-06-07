@@ -95,17 +95,40 @@ export const placeOrder =
           await checkServiceability(
             normalizedAddress.pincode,
             {
-              weight: 1,
+              weight: 0.5,
             }
           );
 
         if (
-          serviceability?.length
-        ) {
-          deliveryDate =
-            serviceability[0]
-              ?.etd || null;
-        }
+  serviceability?.length
+) {
+
+  const slowestCourier =
+    serviceability.reduce(
+      (slowest, current) => {
+
+        const currentDays =
+          Number(
+            current.estimated_delivery_days
+          ) || 0;
+
+        const slowestDays =
+          Number(
+            slowest?.estimated_delivery_days
+          ) || 0;
+
+        return currentDays >
+          slowestDays
+          ? current
+          : slowest;
+      },
+      serviceability[0]
+    );
+
+  deliveryDate =
+    slowestCourier?.etd ||
+    null;
+}
 
       } catch (svcErr) {
 
@@ -155,19 +178,28 @@ const {
       try {
 
         const payload =
-          buildShiprocketPayload({
-            orderId,
+  buildShiprocketPayload({
+    orderId,
 
-            items:
-              normalizedItems,
+    items: normalizedItems,
 
-            shippingAddress:
-              normalizedAddress,
+    shippingAddress:
+      normalizedAddress,
 
-            paymentMethod,
+    paymentMethod,
 
-            totalAmount,
-          });
+    totalAmount,
+
+    customerName:
+      req.user?.name ||
+      normalizedAddress?.name,
+
+    customerEmail:
+      req.user?.email,
+
+    customerPhone:
+      normalizedAddress?.phone,
+  });
 
         shiprocket =
           await createShiprocketOrder(
