@@ -3,10 +3,12 @@ import prisma from "../../lib/prisma.js";
 import {
   parseImages,
 } from "../products/product.utils.js";
+
 import {
   getTrackingDetails,
   getInvoiceUrl,
-} from  "../../integrations/shiprocket/shiprocket.service.js";
+  cancelShipment,
+} from "../../integrations/shiprocket/shiprocket.service.js";
 
 /* =====================================================
    📦 GET USER ORDERS
@@ -206,7 +208,6 @@ export async function getOrderByIdService(
     items,
   };
 }
-
 /* =====================================================
    ❌ CANCEL ORDER
 ===================================================== */
@@ -219,7 +220,6 @@ export async function cancelOrderService(
     await prisma.order.findFirst({
       where: {
         id: orderId,
-
         userId,
       },
 
@@ -238,22 +238,50 @@ export async function cancelOrderService(
      ALLOWED STATUSES
   ========================= */
 
-  const allowedStatuses =
-    [
-      "Pending",
-      "Confirmed",
-      "Shipped",
-      "Packed",
-    ];
+  const allowedStatuses = [
+    "pending",
+    "confirmed",
+  ];
 
   if (
     !allowedStatuses.includes(
-      order.status.toLowerCase()
+      String(
+        order.status
+      ).toLowerCase()
     )
   ) {
     throw new Error(
       "Order cannot be cancelled"
     );
+  }
+
+  /* =========================
+     CANCEL SHIPROCKET ORDER
+  ========================= */
+
+  if (
+    order.shiprocketOrderId
+  ) {
+    try {
+      await cancelShipment(
+        order.shiprocketOrderId
+      );
+
+      console.log(
+        "✅ Shiprocket order cancelled:",
+        order.shiprocketOrderId
+      );
+    } catch (error) {
+      console.error(
+        "❌ Shiprocket cancellation failed:",
+        error?.response?.data ||
+          error.message
+      );
+
+      throw new Error(
+        "Failed to cancel shipment"
+      );
+    }
   }
 
   /* =========================
@@ -291,7 +319,6 @@ export async function cancelOrderService(
 
             select: {
               stock: true,
-
               sold: true,
             },
           });
