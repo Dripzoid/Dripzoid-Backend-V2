@@ -210,24 +210,6 @@ export async function requestPickup(
   });
 }
 
-/* =====================================================
-   ❌ CANCEL SHIPMENT
-===================================================== */
-
-export async function cancelShipment(
-  order_id
-) {
-  return shiprocketRequest({
-    method: "POST",
-
-    endpoint:
-      "/orders/cancel",
-
-    data: {
-      ids: [order_id],
-    },
-  });
-}
 
 /* =====================================================
    📦 AVAILABLE COURIERS
