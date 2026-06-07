@@ -534,3 +534,32 @@ export async function getInvoiceUrl(
     },
   });
 }
+
+/* =====================================================
+   🧾 CANCEL SHIPMENT
+===================================================== */
+
+export async function cancelShipment(
+  shiprocketOrderId
+) {
+  if (!shiprocketOrderId) {
+    throw new Error(
+      "Shiprocket Order ID is required"
+    );
+  }
+
+  return shiprocketRequest({
+    method: "POST",
+
+    endpoint:
+      "/orders/cancel",
+
+    data: {
+      ids: [
+        Number(
+          shiprocketOrderId
+        ),
+      ],
+    },
+  });
+}
