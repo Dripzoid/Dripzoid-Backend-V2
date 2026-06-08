@@ -128,8 +128,23 @@ async function seedKB(
           fact
         );
 
-     await prisma.$executeRawUnsafe(
-  "INSERT INTO kb_vectors (route, fact_text, embedding) VALUES ($1, $2, $3::vector)",
+    await prisma.$executeRawUnsafe(
+  `
+  INSERT INTO kb_vectors
+  (
+    id,
+    route,
+    fact_text,
+    embedding
+  )
+  VALUES
+  (
+    gen_random_uuid(),
+    $1,
+    $2,
+    $3::vector
+  )
+  `,
   route,
   fact,
   JSON.stringify(embedding)
