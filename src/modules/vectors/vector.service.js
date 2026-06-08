@@ -68,9 +68,12 @@ export async function getAllKBVectors() {
       SELECT
         route,
         fact_text,
-        embedding
+        embedding::text AS embedding
       FROM kb_vectors
     `;
 
-  return vectors;
+  return vectors.map((item) => ({
+    ...item,
+    embedding: JSON.parse(item.embedding),
+  }));
 }
