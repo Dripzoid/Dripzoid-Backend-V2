@@ -129,7 +129,7 @@ async function seedKB(
         );
 
      await prisma.$executeRawUnsafe(
-  "INSERT INTO kb_vectors (route, fact_text, embedding) VALUES ($1, $2, $3::jsonb)",
+  "INSERT INTO kb_vectors (route, fact_text, embedding) VALUES ($1, $2, $3::vector)",
   route,
   fact,
   JSON.stringify(embedding)
