@@ -195,7 +195,8 @@ model Product {
 
   orderItems OrderItem[]
 
-  saleProducts     SaleProduct[]
+  saleProducts   SaleProduct[]
+  productVectors ProductVector[]
 
   @@index([name])
   @@index([slug])
@@ -336,8 +337,8 @@ model Order {
   razorpayAmount Int?
 
   shiprocketOrderId String?
-  shipmentId       String?
-  awbCode          String?
+  shipmentId        String?
+  awbCode           String?
 
   expectedDeliveryFrom DateTime?
   expectedDeliveryTo   DateTime?
@@ -920,3 +921,205 @@ model UserPreference {
   updatedAt DateTime @updatedAt
 }
 
+/**
+ * =====================================================
+ * PRODUCT VECTORS
+ * =====================================================
+ */
+
+model ProductVector {
+  productId String @id @map("product_id")
+
+  embedding Unsupported("vector(384)")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("product_vectors")
+}
+
+/**
+ * =====================================================
+ * KB VECTORS
+ * =====================================================
+ */
+
+model KBVector {
+  id String @id @default(uuid()) @db.Uuid
+
+  route String
+
+  factText String @map("fact_text") @db.Text
+
+  embedding Unsupported("vector(384)")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([route, factText])
+  @@map("kb_vectors")
+}
+
+/**
+ * =====================================================
+ * AUTOMATION EVENTS
+ * =====================================================
+ */
+
+model AutomationEvent {
+  id        String @id @default(uuid())
+  eventType String
+  payload   Json
+
+  source String @default("dripzoid-backend")
+
+  status String @default("pending")
+
+  retryCount Int     @default(0)
+  lastError  String?
+
+  processedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([status])
+  @@index([eventType])
+  @@index([createdAt])
+  @@map("automation_events")
+}
+
+/**
+ * =====================================================
+ * EMAIL LOGS
+ * =====================================================
+ */
+
+model EmailLog {
+  id String @id @default(uuid())
+
+  recipientEmail String
+  subject        String
+
+  templateName String?
+  eventType    String?
+
+  provider          String  @default("msg91")
+  providerMessageId String?
+
+  status String
+
+  errorMessage String?
+
+  sentAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([status])
+  @@index([recipientEmail])
+  @@index([eventType])
+  @@index([createdAt])
+  @@map("email_logs")
+}
+
+/**
+ * =====================================================
+ * SCHEDULED TASKS
+ * =====================================================
+ */
+
+model ScheduledTask {
+  id String @id @default(uuid())
+
+  taskType String
+  payload  Json
+
+  executeAt DateTime
+
+  status String @default("pending")
+
+  executedAt DateTime?
+
+  retryCount Int @default(0)
+
+  lastError String?
+
+  createdAt DateTime @default(now())
+
+  @@index([status])
+  @@index([executeAt])
+  @@index([taskType])
+  @@map("scheduled_tasks")
+}
+
+/**
+ * =====================================================
+ * AUTOMATION LOGS
+ * =====================================================
+ */
+
+model AutomationLog {
+  id String @id @default(uuid())
+
+  level String
+
+  service String?
+
+  message String
+
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([level])
+  @@index([service])
+  @@index([createdAt])
+  @@map("automation_logs")
+}
+
+/**
+ * =====================================================
+ * AUTOMATION CONFIGS
+ * =====================================================
+ */
+
+model AutomationConfig {
+  id String @id @default(uuid())
+
+  configKey   String @unique
+  configValue String
+
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@map("automation_configs")
+}
+
+/**
+ * =====================================================
+ * AUTOMATION TEMPLATES
+ * =====================================================
+ */
+
+model AutomationTemplate {
+  id String @id @default(uuid())
+
+  name String @unique
+
+  type String
+
+  subject String?
+
+  content String @db.Text
+
+  isActive Boolean @default(true)
+
+  version Int @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type])
+  @@index([isActive])
+  @@map("automation_templates")
+}
