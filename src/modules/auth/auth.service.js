@@ -82,22 +82,47 @@ const user =
    AUTOMATION EVENT
 ========================= */
 
+const automationPayload = {
+  customer_name: user.name,
+  email: user.email,
+  user_id: user.id,
+  registered_at:
+    new Date().toISOString(),
+};
+
 try {
   await triggerAutomationEvent(
     EVENT_TYPES.USER_REGISTERED,
-    {
-      customer_name: user.name,
-      email: user.email,
-      user_id: user.id,
-      registered_at:
-        new Date().toISOString(),
-    }
+    automationPayload
   );
 } catch (error) {
   console.error(
     "Automation USER_REGISTERED failed:",
     error.message
   );
+
+  await prisma.scheduledTask.create({
+    data: {
+      taskType:
+        "RETRY_AUTOMATION_EVENT",
+
+      payload: {
+        eventType:
+          EVENT_TYPES.USER_REGISTERED,
+
+        payload:
+          automationPayload,
+      },
+
+      executeAt: new Date(
+        Date.now() +
+        5 * 60 * 1000
+      ),
+
+      lastError:
+        error.message,
+    },
+  });
 }
 
 return user;
@@ -227,22 +252,47 @@ user =
    AUTOMATION EVENT
 ========================= */
 
+const automationPayload = {
+  customer_name: user.name,
+  email: user.email,
+  user_id: user.id,
+  registered_at:
+    new Date().toISOString(),
+};
+
 try {
   await triggerAutomationEvent(
     EVENT_TYPES.USER_REGISTERED,
-    {
-      customer_name: user.name,
-      email: user.email,
-      user_id: user.id,
-      registered_at:
-        new Date().toISOString(),
-    }
+    automationPayload
   );
 } catch (error) {
   console.error(
     "Automation USER_REGISTERED failed:",
     error.message
   );
+
+  await prisma.scheduledTask.create({
+    data: {
+      taskType:
+        "RETRY_AUTOMATION_EVENT",
+
+      payload: {
+        eventType:
+          EVENT_TYPES.USER_REGISTERED,
+
+        payload:
+          automationPayload,
+      },
+
+      executeAt: new Date(
+        Date.now() +
+        5 * 60 * 1000
+      ),
+
+      lastError:
+        error.message,
+    },
+  });
 }
 
 return user;
