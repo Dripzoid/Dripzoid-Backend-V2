@@ -2,6 +2,11 @@ import bcrypt from "bcryptjs";
 import crypto from "crypto";
 
 import prisma from "../../lib/prisma.js";
+import { triggerAutomationEvent }
+  from "../../integrations/automation/automation.service.js";
+
+import { EVENT_TYPES }
+  from "../../config/eventTypes.js";
 
 /* ======================================================
    REGISTER USER
@@ -60,31 +65,42 @@ export async function registerUser({
      CREATE USER
   ========================= */
 
-  const user =
-    await prisma.user.create({
-      data: {
-        name: name || "",
+const user =
+  await prisma.user.create({
+    data: {
+      name: name || "",
+      email: normalizedEmail,
+      phone: phoneValue,
+      password: hashedPassword,
+      gender: gender || null,
+      dob: dob ? new Date(dob) : null,
+      is_admin: false,
+    },
+  });
 
-        email: normalizedEmail,
+/* =========================
+   AUTOMATION EVENT
+========================= */
 
-        phone: phoneValue,
-
-        password:
-          hashedPassword,
-
-        gender:
-          gender || null,
-
-        dob: dob
-          ? new Date(dob)
-          : null,
-
-        is_admin: false,
-      },
-    });
-
-  return user;
+try {
+  await triggerAutomationEvent(
+    EVENT_TYPES.USER_REGISTERED,
+    {
+      customer_name: user.name,
+      email: user.email,
+      user_id: user.id,
+      registered_at:
+        new Date().toISOString(),
+    }
+  );
+} catch (error) {
+  console.error(
+    "Automation USER_REGISTERED failed:",
+    error.message
+  );
 }
+
+return user;
 
 /* ======================================================
    LOGIN USER
@@ -195,24 +211,41 @@ export async function handleGoogleAuth(
      CREATE GOOGLE USER
   ========================= */
 
-  user =
-    await prisma.user.create({
-      data: {
-        name,
+user =
+  await prisma.user.create({
+    data: {
+      name,
+      email,
+      phone: "",
+      password:
+        hashedPassword,
+      is_admin: false,
+    },
+  });
 
-        email,
+/* =========================
+   AUTOMATION EVENT
+========================= */
 
-        phone: "",
-
-        password:
-          hashedPassword,
-
-        is_admin: false,
-      },
-    });
-
-  return user;
+try {
+  await triggerAutomationEvent(
+    EVENT_TYPES.USER_REGISTERED,
+    {
+      customer_name: user.name,
+      email: user.email,
+      user_id: user.id,
+      registered_at:
+        new Date().toISOString(),
+    }
+  );
+} catch (error) {
+  console.error(
+    "Automation USER_REGISTERED failed:",
+    error.message
+  );
 }
+
+return user;
 
 /* ======================================================
    RESET PASSWORD
