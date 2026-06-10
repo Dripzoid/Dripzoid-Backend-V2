@@ -1,4 +1,4 @@
-import prisma from "../../../config/prisma.js";
+import prisma from "../../../lib/prisma.js";
 
 export async function getPendingScheduledTasks() {
   return prisma.scheduledTask.findMany({
