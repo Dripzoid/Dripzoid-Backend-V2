@@ -167,6 +167,15 @@ export async function createOrderService({
 
     const orderNumberPlaceholder = generateTemporaryOrderNumber();
 
+    const finalTotal =
+  computedTotal +
+  (
+    String(paymentMethod)
+      .toUpperCase() === "COD"
+      ? 25
+      : 0
+  );
+
     /* =====================================
        📝 CREATE ORDER
     ====================================== */
@@ -178,8 +187,8 @@ export async function createOrderService({
         shippingAddress: shippingAddress ?? {},
         paymentMethod: paymentMethod ?? null,
         paymentDetails: paymentDetails ?? {},
-        totalAmount: toSafeNumber(totalAmount, computedTotal),
-        status: "Pending",
+       totalAmount: finalTotal,
+        status: "Confirmed",
         deliveryDate: toNullableDate(deliveryDate),
       },
     });
@@ -194,6 +203,12 @@ export async function createOrderService({
         orderNumber: finalOrderNumber,
       },
     });
+     await tx.shipment.create({
+  data: {
+    orderId: updatedOrder.id,
+    shipmentStatus: "Confirmed",
+  },
+});
 
     /* =====================================
        📦 CREATE ORDER ITEMS + UPDATE PRODUCT STOCK
@@ -290,25 +305,74 @@ export async function attachShipmentToOrderService({
   if (!existingOrder) {
     throw new Error("Order not found");
   }
-
-  const shipmentData = {
-    shiprocketOrderId: shiprocketOrderId !== null ? String(shiprocketOrderId) : null,
-    shipmentId: shipmentId !== null ? String(shipmentId) : null,
-    awbCode: awbCode !== null ? String(awbCode) : null,
-    courierId: courierId !== null && courierId !== undefined ? Number(courierId) : null,
-    courierName: courierName ?? null,
-    shipmentStatus: shipmentStatus ?? null,
-    pickupScheduledAt: toNullableDate(pickupScheduledAt),
-    pickupTokenNumber: pickupTokenNumber ?? null,
-    assignedAt: toNullableDate(assignedAt),
-    isReturn: Boolean(isReturn),
-  };
-
   const existingShipment = await prisma.shipment.findUnique({
     where: {
       orderId,
     },
   });
+const shipmentData = {
+  shiprocketOrderId:
+    shiprocketOrderId !== null &&
+    shiprocketOrderId !== undefined
+      ? String(shiprocketOrderId)
+      : existingShipment?.shiprocketOrderId,
+
+  shipmentId:
+    shipmentId !== null &&
+    shipmentId !== undefined
+      ? String(shipmentId)
+      : existingShipment?.shipmentId,
+
+  awbCode:
+    awbCode !== null &&
+    awbCode !== undefined
+      ? String(awbCode)
+      : existingShipment?.awbCode,
+
+  courierId:
+    courierId !== null &&
+    courierId !== undefined
+      ? Number(courierId)
+      : existingShipment?.courierId,
+
+  courierName:
+    courierName !== null &&
+    courierName !== undefined
+      ? courierName
+      : existingShipment?.courierName,
+
+  shipmentStatus:
+    shipmentStatus !== null &&
+    shipmentStatus !== undefined
+      ? shipmentStatus
+      : existingShipment?.shipmentStatus,
+
+  pickupScheduledAt:
+    pickupScheduledAt !== null &&
+    pickupScheduledAt !== undefined
+      ? toNullableDate(pickupScheduledAt)
+      : existingShipment?.pickupScheduledAt,
+
+  pickupTokenNumber:
+    pickupTokenNumber !== null &&
+    pickupTokenNumber !== undefined
+      ? pickupTokenNumber
+      : existingShipment?.pickupTokenNumber,
+
+  assignedAt:
+    assignedAt !== null &&
+    assignedAt !== undefined
+      ? toNullableDate(assignedAt)
+      : existingShipment?.assignedAt,
+
+  isReturn:
+    isReturn !== null &&
+    isReturn !== undefined
+      ? Boolean(isReturn)
+      : existingShipment?.isReturn ?? false,
+};
+
+
 
   if (existingShipment) {
     await prisma.shipment.update({
@@ -347,6 +411,20 @@ export async function updateOrderShipmentStatusService({
   location = null,
   scanTimestamp = null,
 }) {
+
+   const orderStatusMap = {
+  NEW: "Confirmed",
+  CONFIRMED: "Confirmed",
+  PICKUP_SCHEDULED: "Confirmed",
+  PICKED_UP: "Packed",
+  IN_TRANSIT: "Shipped",
+  SHIPPED: "Shipped",
+  OUT_FOR_DELIVERY: "Out For Delivery",
+  DELIVERED: "Delivered",
+  RTO_INITIATED: "RTO Initiated",
+  RTO_DELIVERED: "RTO Delivered",
+  CANCELLED: "Cancelled",
+};
   if (!orderId) {
     throw new Error("orderId is required");
   }
@@ -406,6 +484,29 @@ export async function updateOrderShipmentStatusService({
       },
     });
   }
+const mappedOrderStatus =
+  shipmentStatus
+    ? orderStatusMap[
+        String(
+          shipmentStatus
+        ).toUpperCase()
+      ]
+    : null;
+
+if (
+  mappedOrderStatus
+) {
+  await prisma.order.update({
+    where: {
+      id: orderId,
+    },
+
+    data: {
+      status:
+        mappedOrderStatus,
+    },
+  });
+}
 
   return updatedShipment;
 }
@@ -650,7 +751,7 @@ export async function reorderService(userId, orderId) {
         userId,
         orderNumber: orderNumberPlaceholder,
         totalAmount: oldOrder.totalAmount,
-        status: "Pending",
+        status: "Confirmed",
         paymentMethod: oldOrder.paymentMethod,
         paymentDetails: oldOrder.paymentDetails,
         shippingAddress: oldOrder.shippingAddress,
@@ -669,6 +770,15 @@ export async function reorderService(userId, orderId) {
         orderNumber: finalOrderNumber,
       },
     });
+     await tx.shipment.create({
+  data: {
+    orderId:
+      updatedOrder.id,
+
+    shipmentStatus:
+      "Confirmed",
+  },
+});
 
     for (const item of normalizedItems) {
       await tx.orderItem.create({
