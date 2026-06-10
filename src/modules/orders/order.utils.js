@@ -148,6 +148,7 @@ export function normalizeOrderItems(
 
 export function buildShiprocketPayload({
   orderId,
+  orderNumber,
   items,
   shippingAddress,
   paymentMethod,
@@ -196,7 +197,7 @@ export function buildShiprocketPayload({
 
   return {
     order_id:
-      `DRIP-${orderId}`,
+      orderNumber,
 
     order_date:
       new Date()
