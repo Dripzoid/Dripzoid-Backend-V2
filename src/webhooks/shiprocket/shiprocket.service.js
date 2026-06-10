@@ -4,7 +4,7 @@ import prisma from "../../lib/prisma.js";
 
 import {
   updateOrderShipmentStatusService,
-} from "../../modules/order/order.service.js";
+} from "../../modules/orders/order.service.js";
 
 const STATUS_MAPPING = {
   "PICKED UP": "Packed",
