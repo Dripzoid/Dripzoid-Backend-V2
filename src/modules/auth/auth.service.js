@@ -139,18 +139,29 @@ export async function loginUser({
     },
   });
 
-  if (!user || !user.password) {
-    throw new Error("Invalid email or password");
+  if (!user) {
+    throw new Error(
+      "User not found. Please register first."
+    );
+  }
+
+  if (!user.password) {
+    throw new Error(
+      "This account uses Google Sign-In. Please continue with Google."
+    );
   }
 
   /* =========================
      VERIFY PASSWORD
   ========================= */
 
-  const isMatch = await bcrypt.compare(password, user.password);
+  const isMatch = await bcrypt.compare(
+    password,
+    user.password
+  );
 
   if (!isMatch) {
-    throw new Error("Invalid email or password");
+    throw new Error("Incorrect password");
   }
 
   return user;
