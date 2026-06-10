@@ -1,3 +1,5 @@
+// shiprocket.controller.js
+
 import {
   processShiprocketWebhook,
 } from "./shiprocket.service.js";
@@ -7,22 +9,15 @@ export async function handleShiprocketWebhook(
   res
 ) {
   try {
-    const result =
-      await processShiprocketWebhook(req.body);
-
-    return res.status(200).json({
-      success: true,
-      result,
-    });
+    await processShiprocketWebhook(
+      req.body
+    );
   } catch (error) {
     console.error(
-      "Shiprocket webhook error:",
+      "Shiprocket Webhook Error:",
       error
     );
-
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
   }
+
+  return res.sendStatus(200);
 }
