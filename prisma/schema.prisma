@@ -77,7 +77,7 @@ model User {
 
   name     String?
   email    String  @unique
-  phone    String? @unique
+  phone    String? 
   password String
 
   gender String?
@@ -302,16 +302,10 @@ model WishlistItem {
   @@unique([userId, productId])
 }
 
-/**
- * ======================================================
- * ORDERS
- * ======================================================
- */
-
 model Order {
   id String @id @default(uuid())
 
-  orderNumber String? @unique
+  orderNumber String @unique
 
   userId String
   user   User   @relation(fields: [userId], references: [id])
@@ -323,32 +317,24 @@ model Order {
 
   paymentMethod String?
 
-  status String @default("pending")
+  status String @default("Pending")
 
-  paymentDetails  Json?
+  paymentDetails Json?
+
   shippingAddress Json?
 
-  itemsJson    Json?
-  shippingJson Json?
+  deliveryDate DateTime?
 
   razorpayOrderId   String?
   razorpayPaymentId String?
-
-  razorpayAmount Int?
-
-  shiprocketOrderId String?
-  shipmentId        String?
-  awbCode           String?
-
-  expectedDeliveryFrom DateTime?
-  expectedDeliveryTo   DateTime?
-
-  deliveryDate DateTime?
+  razorpayAmount    Int?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   items OrderItem[]
+
+  shipment Shipment?
 
   @@index([userId])
   @@index([status])
@@ -1122,4 +1108,98 @@ model AutomationTemplate {
   @@index([type])
   @@index([isActive])
   @@map("automation_templates")
+}
+
+model Shipment {
+  id String @id @default(uuid())
+
+  orderId String @unique
+  order   Order  @relation(fields: [orderId], references: [id])
+
+  shiprocketOrderId String?
+  shipmentId        String? @unique
+
+  awbCode String?
+
+  courierId   Int?
+  courierName String?
+
+  shipmentStatus String?
+
+  pickupScheduledAt DateTime?
+  pickupTokenNumber String?
+
+  assignedAt DateTime?
+
+  isReturn Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trackingEvents ShipmentTracking[]
+}
+
+model ShipmentTracking {
+  id String @id @default(uuid())
+
+  shipmentId String
+  shipment   Shipment @relation(fields: [shipmentId], references: [id])
+
+  status   String
+  activity String
+
+  location String?
+
+  scanTimestamp DateTime?
+
+  createdAt DateTime @default(now())
+}
+
+model Courier {
+  id Int @id
+
+  name String
+
+  baseCourierId Int?
+
+  minWeight Float?
+
+  mode Int?
+
+  serviceType Int?
+
+  isActive Boolean @default(true)
+
+  realtimeTracking String?
+
+  podAvailable String?
+
+  callBeforeDelivery String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ServiceabilityCheck {
+  id String @id @default(uuid())
+
+  orderId String?
+
+  courierId Int?
+
+  courierName String?
+
+  estimatedDays Int?
+
+  etd String?
+
+  freightCharge Float?
+
+  rtoCharges Float?
+
+  rating Float?
+
+  isRecommended Boolean @default(false)
+
+  createdAt DateTime @default(now())
 }
