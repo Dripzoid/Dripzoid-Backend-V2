@@ -1,6 +1,6 @@
 // src/webhooks/shiprocket/shiprocket.service.js
 
-import prisma from "../../config/prisma.js";
+import prisma from "../../lib/prisma.js";
 
 import {
   updateOrderShipmentStatusService,
