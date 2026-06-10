@@ -1,4 +1,5 @@
 // integrations/automation/automation.service.js
+import axios from "axios";
 
 export async function triggerAutomationEvent(
   eventType,
