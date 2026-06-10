@@ -1,21 +1,33 @@
 // src/webhooks/shiprocket/shiprocket.service.js
 
+import prisma from "../../config/prisma.js";
+
 import {
   updateOrderShipmentStatusService,
 } from "../../modules/order/order.service.js";
 
 const STATUS_MAPPING = {
-  "PICKED UP": "PACKED",
-  SHIPPED: "SHIPPED",
-  "IN TRANSIT": "IN_TRANSIT",
-  "OUT FOR DELIVERY": "OUT_FOR_DELIVERY",
-  DELIVERED: "DELIVERED",
+  "PICKED UP": "Packed",
 
-  "RTO INITIATED": "RTO_INITIATED",
-  "RTO IN TRANSIT": "RTO_IN_TRANSIT",
-  "RTO DELIVERED": "RTO_DELIVERED",
+  SHIPPED: "Shipped",
 
-  CANCELLED: "CANCELLED",
+  "IN TRANSIT": "In Transit",
+
+  "OUT FOR DELIVERY":
+    "Out For Delivery",
+
+  DELIVERED: "Delivered",
+
+  "RTO INITIATED":
+    "RTO Initiated",
+
+  "RTO IN TRANSIT":
+    "RTO In Transit",
+
+  "RTO DELIVERED":
+    "RTO Delivered",
+
+  CANCELLED: "Cancelled",
 };
 
 export async function processShiprocketWebhook(
@@ -23,51 +35,61 @@ export async function processShiprocketWebhook(
 ) {
   console.log(
     "Shiprocket Webhook:",
-    payload
+    JSON.stringify(
+      payload,
+      null,
+      2
+    )
   );
 
   const {
     order_id,
     shipment_status,
-    awb_code,
+    awb,
     courier_name,
-    tracking_url,
   } = payload;
+
+  const order =
+    await prisma.order.findFirst({
+      where: {
+        shiprocketOrderId:
+          String(order_id),
+      },
+    });
+
+  if (!order) {
+    throw new Error(
+      `Order not found for Shiprocket Order ID: ${order_id}`
+    );
+  }
 
   const mappedStatus =
     STATUS_MAPPING[
       shipment_status
-    ];
-
-  if (!mappedStatus) {
-    console.log(
-      "Unhandled Shiprocket Status:",
-      shipment_status
-    );
-
-    return {
-      success: false,
-      message:
-        "Unhandled shipment status",
-    };
-  }
+    ] || shipment_status;
 
   const updatedOrder =
     await updateOrderShipmentStatusService({
-      orderId: order_id, // assuming this is your Dripzoid order id
+      orderId: order.id,
+
       shipmentStatus:
         mappedStatus,
-      awbCode: awb_code,
+
+      awbCode:
+        awb ||
+        order.awbCode,
+
       courierName:
-        courier_name,
-      trackingUrl:
-        tracking_url,
+        courier_name ||
+        order.courierName,
     });
 
   return {
     success: true,
+
     orderId:
       updatedOrder.id,
+
     shipmentStatus:
       updatedOrder.shipmentStatus,
   };
