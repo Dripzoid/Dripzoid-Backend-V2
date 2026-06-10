@@ -6,6 +6,15 @@ export function normalizeShippingAddress(
   shippingAddress = {},
   user = {}
 ) {
+  const pincode = String(
+    shippingAddress?.pincode ||
+    shippingAddress?.postalCode ||
+    shippingAddress?.zipCode ||
+    ""
+  )
+    .replace(/\D/g, "")
+    .trim();
+
   return {
     ...shippingAddress,
 
@@ -13,6 +22,7 @@ export function normalizeShippingAddress(
       shippingAddress?.name ||
       `${shippingAddress?.first_name || ""}
        ${shippingAddress?.last_name || ""}`
+        .replace(/\s+/g, " ")
         .trim(),
 
     line1:
@@ -21,33 +31,51 @@ export function normalizeShippingAddress(
       "N/A",
 
     line2:
-      shippingAddress?.line2 || "",
+      shippingAddress?.line2 ||
+      "",
 
     city:
-      shippingAddress?.city ||
-      "N/A",
+      String(
+        shippingAddress?.city ||
+        "N/A"
+      )
+        .replace(/\s+/g, " ")
+        .trim(),
 
     state:
-      shippingAddress?.state ||
-      "N/A",
+      String(
+        shippingAddress?.state ||
+        "N/A"
+      )
+        .replace(/\s+/g, " ")
+        .trim(),
 
     country:
-      shippingAddress?.country ||
-      "India",
+      String(
+        shippingAddress?.country ||
+        "India"
+      )
+        .replace(/\s+/g, " ")
+        .trim(),
 
-    pincode:
-      shippingAddress?.pincode ||
-      "000000",
+    pincode,
 
     phone:
-      shippingAddress?.phone ||
-      user?.phone ||
-      "0000000000",
+      String(
+        shippingAddress?.phone ||
+        user?.phone ||
+        ""
+      )
+        .replace(/\D/g, "")
+        .trim(),
 
     email:
-      shippingAddress?.email ||
-      user?.email ||
-      "",
+      String(
+        shippingAddress?.email ||
+        user?.email ||
+        ""
+      )
+        .trim(),
   };
 }
 
