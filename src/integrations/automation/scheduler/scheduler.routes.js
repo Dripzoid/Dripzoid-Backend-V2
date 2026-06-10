@@ -6,7 +6,12 @@ import {
   createAutomationLog,
 } from "./scheduler.controller.js";
 
+import { verifyInternalKey }
+  from "../../../middlewares/automation.middleware.js";
+
 const router = express.Router();
+
+router.use(verifyInternalKey);
 
 router.get(
   "/scheduled-tasks/pending",
