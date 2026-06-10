@@ -28,6 +28,7 @@ import accountRoutes from "../modules/account/account.routes.js";
 import backupRoutes from "../modules/admin/backup.routes.js";
 import adminStatsRoutes from "../modules/admin/stats/stats.routes.js";
 import shippingRoutes from "../integrations/shiprocket/shipping.routes.js";
+import schedulerRoutes from "../integrations/automation/scheduler/scheduler.routes.js";
 import askdripRoutes from "../modules/askdrip/askdrip.routes.js";
 import semanticRoutes from "../modules/semantic-search/semantic.routes.js";
 import vectorRoutes from "../modules/vectors/vector.routes.js";
@@ -131,6 +132,10 @@ router.use(
 router.use(
   "/vectors",
   vectorRoutes
+);
+router.use(
+  "/automation/scheduler",
+  schedulerRoutes
 );
 
 export default router;
