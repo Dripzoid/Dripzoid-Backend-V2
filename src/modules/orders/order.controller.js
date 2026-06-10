@@ -180,6 +180,7 @@ const {
         const payload =
   buildShiprocketPayload({
     orderId,
+    orderNumber,
 
     items: normalizedItems,
 
