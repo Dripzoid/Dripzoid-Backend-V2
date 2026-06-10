@@ -106,7 +106,7 @@ export async function registerUser({
       password: hashedPassword,
       gender: gender || null,
       dob: dob ? new Date(dob) : null,
-      is_admin: false,
+      isAdmin: false,
     },
   });
 
@@ -214,7 +214,7 @@ export async function handleGoogleAuth(profile) {
       email,
       phone: "",
       password: hashedPassword,
-      is_admin: false,
+      isAdmin: false,
     },
   });
 
