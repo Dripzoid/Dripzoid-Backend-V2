@@ -52,28 +52,35 @@ export async function getUserOrdersService(
   ========================= */
 
   const orders =
-    await prisma.order.findMany({
-      where,
+  await prisma.order.findMany({
+    where,
 
-      skip,
+    skip,
 
-      take:
-        pageLimit,
+    take: pageLimit,
 
-      orderBy: {
-        createdAt:
-          "desc",
+    orderBy: {
+      createdAt: "desc",
+    },
+
+    include: {
+      items: {
+        include: {
+          product: true,
+        },
       },
 
-      include: {
-        items: {
-          include: {
-            product: true,
+      shipment: {
+        include: {
+          trackingEvents: {
+            orderBy: {
+              createdAt: "desc",
+            },
           },
         },
       },
-    });
-
+    },
+  });
   /* =========================
      FORMAT RESPONSE
   ========================= */
@@ -134,23 +141,31 @@ export async function getOrderByIdService(
   userId,
   orderId
 ) {
-  const order =
-    await prisma.order.findFirst({
-      where: {
-        id: orderId,
+ const order =
+  await prisma.order.findFirst({
+    where: {
+      id: orderId,
+      userId,
+    },
 
-        userId,
+    include: {
+      items: {
+        include: {
+          product: true,
+        },
       },
 
-      include: {
-        items: {
-          include: {
-            product: true,
+      shipment: {
+        include: {
+          trackingEvents: {
+            orderBy: {
+              createdAt: "desc",
+            },
           },
         },
       },
-    });
-
+    },
+  });
   if (!order) {
     throw new Error(
       "Order not found"
@@ -224,8 +239,9 @@ export async function cancelOrderService(
       },
 
       include: {
-        items: true,
-      },
+  items: true,
+  shipment: true,
+},
     });
 
   if (!order) {
@@ -260,12 +276,14 @@ export async function cancelOrderService(
   ========================= */
 
   if (
-    order.shiprocketOrderId
-  ) {
+  order.shipment
+    ?.shiprocketOrderId
+) {
     try {
       await cancelShipment(
-        order.shiprocketOrderId
-      );
+  order.shipment
+    .shiprocketOrderId
+);
 
       console.log(
         "✅ Shiprocket order cancelled:",
@@ -304,6 +322,34 @@ export async function cancelOrderService(
             "Cancelled",
         },
       });
+      if (order.shipment) {
+  await tx.shipment.update({
+    where: {
+      orderId,
+    },
+
+    data: {
+      shipmentStatus:
+        "Cancelled",
+    },
+  });
+
+  await tx.shipmentTracking.create({
+    data: {
+      shipmentId:
+        order.shipment.id,
+
+      status:
+        "Cancelled",
+
+      activity:
+        "Order cancelled by user",
+
+      scanTimestamp:
+        new Date(),
+    },
+  });
+}
 
       /* =====================
          RESTORE STOCK
@@ -395,35 +441,89 @@ export async function reorderService(
   /* =========================
      CREATE NEW ORDER
   ========================= */
+function generateTemporaryOrderNumber() {
+  const now = Date.now();
 
-  const newOrder =
-    await prisma.order.create({
-      data: {
-        userId,
+  const rand =
+    Math.random()
+      .toString(36)
+      .slice(2, 8)
+      .toUpperCase();
 
-        totalAmount:
-          oldOrder.totalAmount,
+  return `TMP-${now}-${rand}`;
+}
 
-        status:
-          "Pending",
+function generateOrderNumber(orderId) {
+  const now = new Date();
 
-        paymentMethod:
-          oldOrder.paymentMethod,
+  return `DRIP-${
+    now.getFullYear()
+  }${String(
+    now.getMonth() + 1
+  ).padStart(2, "0")}${String(
+    now.getDate()
+  ).padStart(2, "0")}-${orderId}`;
+}
+  const tempOrderNumber =
+  generateTemporaryOrderNumber();
 
-        paymentDetails:
-          oldOrder.paymentDetails,
+const newOrder =
+  await prisma.order.create({
+    data: {
+      userId,
 
-        shippingAddress:
-          oldOrder.shippingAddress,
+      orderNumber:
+        tempOrderNumber,
 
-        addressId:
-          oldOrder.addressId,
+      totalAmount:
+        oldOrder.totalAmount,
 
-        deliveryDate:
-          oldOrder.deliveryDate,
-      },
-    });
+      status:
+        "Confirmed",
 
+      paymentMethod:
+        oldOrder.paymentMethod,
+
+      paymentDetails:
+        oldOrder.paymentDetails,
+
+      shippingAddress:
+        oldOrder.shippingAddress,
+
+      addressId:
+        oldOrder.addressId,
+
+      deliveryDate:
+        oldOrder.deliveryDate,
+    },
+  });
+
+const finalOrderNumber =
+  generateOrderNumber(
+    newOrder.id
+  );
+
+const updatedOrder =
+  await prisma.order.update({
+    where: {
+      id: newOrder.id,
+    },
+
+    data: {
+      orderNumber:
+        finalOrderNumber,
+    },
+  });
+
+await prisma.shipment.create({
+  data: {
+    orderId:
+      updatedOrder.id,
+
+    shipmentStatus:
+      "Confirmed",
+  },
+});
   /* =========================
      DUPLICATE ORDER ITEMS
   ========================= */
@@ -455,10 +555,13 @@ export async function reorderService(
     });
   }
 
-  return {
-    orderId:
-      newOrder.id,
-  };
+ return {
+  orderId:
+    updatedOrder.id,
+
+  orderNumber:
+    finalOrderNumber,
+};
 }
 
 export async function verifyProductPurchaseService(
@@ -492,18 +595,17 @@ export async function trackOrderService(
   userId,
   orderId
 ) {
-  const order =
-    await prisma.order.findFirst({
-      where: {
-        id: orderId,
-        userId,
-      },
-      select: {
-        id: true,
-        status: true,
-        shiprocketOrderId: true,
-      },
-    });
+const order =
+  await prisma.order.findFirst({
+    where: {
+      id: orderId,
+      userId,
+    },
+
+    include: {
+      shipment: true,
+    },
+  });
 
   if (!order) {
     throw new Error(
@@ -511,17 +613,19 @@ export async function trackOrderService(
     );
   }
 
-  if (
-    !order.shiprocketOrderId
-  ) {
+ if (
+  !order.shipment
+    ?.shiprocketOrderId
+) {
     throw new Error(
       "Shipment not created yet"
     );
   }
 
   return getTrackingDetails(
-    order.shiprocketOrderId
-  );
+  order.shipment
+    .shiprocketOrderId
+);
 }
 
 /* =====================================================
@@ -532,17 +636,17 @@ export async function downloadInvoiceService(
   userId,
   orderId
 ) {
-  const order =
-    await prisma.order.findFirst({
-      where: {
-        id: orderId,
-        userId,
-      },
-      select: {
-        id: true,
-        shiprocketOrderId: true,
-      },
-    });
+ const order =
+  await prisma.order.findFirst({
+    where: {
+      id: orderId,
+      userId,
+    },
+
+    include: {
+      shipment: true,
+    },
+  });
 
   if (!order) {
     throw new Error(
@@ -550,15 +654,17 @@ export async function downloadInvoiceService(
     );
   }
 
-  if (
-    !order.shiprocketOrderId
-  ) {
+ if (
+  !order.shipment
+    ?.shiprocketOrderId
+) {
     throw new Error(
       "Invoice unavailable"
     );
   }
 
-  return getInvoiceUrl(
-    order.shiprocketOrderId
-  );
+ return getInvoiceUrl(
+  order.shipment
+    .shiprocketOrderId
+);
 }
