@@ -1,4 +1,17 @@
-import Order from "../../modules/order/order.model.js";
+// src/webhooks/shiprocket/shiprocket.service.js
+
+import {
+  updateOrderShipmentStatusService,
+} from "../../modules/order/order.service.js";
+
+const STATUS_MAPPING = {
+  NEW: "PLACED",
+  PICKED_UP: "PACKED",
+  SHIPPED: "SHIPPED",
+  "OUT FOR DELIVERY": "OUT_FOR_DELIVERY",
+  DELIVERED: "DELIVERED",
+  CANCELLED: "CANCELLED",
+};
 
 export async function processShiprocketWebhook(
   payload
@@ -12,59 +25,45 @@ export async function processShiprocketWebhook(
     order_id,
     shipment_status,
     awb_code,
+    courier_name,
+    tracking_url,
   } = payload;
 
-  const order = await Order.findOne({
-    shiprocketOrderId: order_id,
-  });
+  const mappedStatus =
+    STATUS_MAPPING[
+      shipment_status
+    ];
 
-  if (!order) {
-    throw new Error(
-      "Order not found"
+  if (!mappedStatus) {
+    console.log(
+      "Unhandled Shiprocket Status:",
+      shipment_status
     );
+
+    return {
+      success: false,
+      message:
+        "Unhandled shipment status",
+    };
   }
 
-  switch (shipment_status) {
-    case "NEW":
-      order.status = "PLACED";
-      break;
-
-    case "PICKED_UP":
-      order.status = "PACKED";
-      break;
-
-    case "SHIPPED":
-      order.status = "SHIPPED";
-      break;
-
-    case "OUT FOR DELIVERY":
-      order.status =
-        "OUT_FOR_DELIVERY";
-      break;
-
-    case "DELIVERED":
-      order.status =
-        "DELIVERED";
-      break;
-
-    case "CANCELLED":
-      order.status =
-        "CANCELLED";
-      break;
-
-    default:
-      console.log(
-        "Unhandled Shiprocket Status:",
-        shipment_status
-      );
-  }
-
-  order.awb = awb_code;
-
-  await order.save();
+  const updatedOrder =
+    await updateOrderShipmentStatusService({
+      orderId: order_id, // assuming this is your Dripzoid order id
+      shipmentStatus:
+        mappedStatus,
+      awbCode: awb_code,
+      courierName:
+        courier_name,
+      trackingUrl:
+        tracking_url,
+    });
 
   return {
-    orderId: order._id,
-    status: order.status,
+    success: true,
+    orderId:
+      updatedOrder.id,
+    shipmentStatus:
+      updatedOrder.shipmentStatus,
   };
 }
