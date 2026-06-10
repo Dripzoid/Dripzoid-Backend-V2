@@ -19,7 +19,6 @@ import certificatesRoutes from "../modules/careers/certificates/certificates.rou
 import cartRoutes from "../modules/cart/cart.routes.js";
 import couponsRoutes from "../modules/coupons/coupons.routes.js";
 import wishlistRoutes from "../modules/wishlist/wishlist.routes.js";
-import webhookRoutes from "./webhook.routes.js";
 import emailRoutes from "../modules/email/email.routes.js";
 import otpRoutes from "../modules/otp/otp.routes.js";
 import paymentRoutes from "../modules/payments/payment.routes.js";
@@ -92,10 +91,6 @@ router.use(
 router.use(
   "/wishlist",
   wishlistRoutes
-);
-router.use(
-  "/webhooks",
-  webhookRoutes
 );
 router.use(
   "/email",
