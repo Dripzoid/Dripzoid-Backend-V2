@@ -1,33 +1,116 @@
 import prisma from "../../lib/prisma.js";
-
-import {
-  parseImages,
-} from "../products/product.utils.js";
+import { parseImages } from "../products/product.utils.js";
 
 /* =====================================================
    🆔 GENERATE ORDER NUMBER
 ===================================================== */
 
-function generateOrderNumber(
-  orderId
-) {
-  const now =
-    new Date();
+function generateOrderNumber(orderId) {
+  const now = new Date();
 
-  const y =
-    now.getFullYear();
-
-  const m =
-    String(
-      now.getMonth() + 1
-    ).padStart(2, "0");
-
-  const d =
-    String(
-      now.getDate()
-    ).padStart(2, "0");
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
 
   return `DRIP-${y}${m}${d}-${orderId}`;
+}
+
+function generateTemporaryOrderNumber() {
+  const now = Date.now();
+  const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
+  return `TMP-${now}-${rand}`;
+}
+
+function toSafeNumber(value, fallback = 0) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+}
+
+function toNullableDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function normalizeOrderItemInput(item) {
+  const productId = item.product_id || item.productId;
+  const quantity = toSafeNumber(item.quantity, 0);
+  const unitPrice = toSafeNumber(item.unit_price ?? item.unitPrice, 0);
+
+  if (!productId) {
+    throw new Error("Each order item must have a productId");
+  }
+
+  if (quantity <= 0) {
+    throw new Error(`Invalid quantity for product ${productId}`);
+  }
+
+  if (unitPrice < 0) {
+    throw new Error(`Invalid unit price for product ${productId}`);
+  }
+
+  return {
+    productId,
+    quantity,
+    unitPrice,
+    selectedColor: item.selectedColor ?? null,
+    selectedSize: item.selectedSize ?? null,
+  };
+}
+
+function buildOrderItemView(item) {
+  const images = parseImages(item.product?.images);
+
+  return {
+    id: item.productId,
+    name: item.product?.name || null,
+    image: images[0] || null,
+    images,
+    quantity: item.quantity,
+    price: item.price,
+    options: {
+      color: item.selectedColor,
+      size: item.selectedSize,
+    },
+  };
+}
+
+function buildShipmentView(shipment) {
+  if (!shipment) return null;
+
+  return {
+    id: shipment.id,
+    orderId: shipment.orderId,
+    shiprocketOrderId: shipment.shiprocketOrderId,
+    shipmentId: shipment.shipmentId,
+    awbCode: shipment.awbCode,
+    courierId: shipment.courierId,
+    courierName: shipment.courierName,
+    shipmentStatus: shipment.shipmentStatus,
+    pickupScheduledAt: shipment.pickupScheduledAt,
+    pickupTokenNumber: shipment.pickupTokenNumber,
+    assignedAt: shipment.assignedAt,
+    isReturn: shipment.isReturn,
+    createdAt: shipment.createdAt,
+    updatedAt: shipment.updatedAt,
+    trackingEvents: (shipment.trackingEvents || []).map((event) => ({
+      id: event.id,
+      shipmentId: event.shipmentId,
+      status: event.status,
+      activity: event.activity,
+      location: event.location,
+      scanTimestamp: event.scanTimestamp,
+      createdAt: event.createdAt,
+    })),
+  };
+}
+
+function buildOrderView(order) {
+  return {
+    ...order,
+    shipment: buildShipmentView(order.shipment),
+    items: (order.items || []).map(buildOrderItemView),
+  };
 }
 
 /* =====================================================
@@ -43,276 +126,205 @@ export async function createOrderService({
   totalAmount,
   deliveryDate,
 }) {
-  if (
-    !items ||
-    !Array.isArray(items) ||
-    items.length === 0
-  ) {
-    throw new Error(
-      "Order items required"
-    );
+  if (!userId) {
+    throw new Error("userId is required");
   }
 
-  return prisma.$transaction(
-    async (tx) => {
-      /* =====================================
-         📦 VALIDATE STOCK
-      ===================================== */
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    throw new Error("Order items required");
+  }
 
-      for (const item of items) {
-        const product =
-          await tx.product.findUnique({
-            where: {
-              id:
-                item.product_id,
-            },
+  const normalizedItems = items.map(normalizeOrderItemInput);
 
-            select: {
-              id: true,
-              stock: true,
-              sold: true,
-            },
-          });
+  return prisma.$transaction(async (tx) => {
+    let computedTotal = 0;
 
-        if (!product) {
-          throw new Error(
-            `Product ${item.product_id} not found`
-          );
-        }
-
-        if (
-          product.stock !==
-            null &&
-          product.stock <
-            item.quantity
-        ) {
-          throw new Error(
-            `Insufficient stock for product ${item.product_id}`
-          );
-        }
-      }
-
-      /* =====================================
-         📝 CREATE ORDER
-      ===================================== */
-
-      const order =
-        await tx.order.create({
-          data: {
-            userId,
-
-            addressId:
-              shippingAddress?.id ||
-              null,
-
-            shippingAddress:
-              shippingAddress ||
-              {},
-
-            paymentMethod:
-              paymentMethod ||
-              "",
-
-            paymentDetails:
-              paymentDetails ||
-              {},
-
-            totalAmount:
-              Number(
-                totalAmount ||
-                  0
-              ),
-
-            status:
-              "Confirmed",
-
-            deliveryDate:
-              deliveryDate
-                ? new Date(
-                    deliveryDate
-                  )
-                : null,
-          },
-        });
-
-      /* =====================================
-         🆔 GENERATE ORDER NUMBER
-      ===================================== */
-
-      const orderNumber =
-        generateOrderNumber(
-          order.id
-        );
-
-      /* =====================================
-         📝 UPDATE ORDER NUMBER
-      ===================================== */
-
-      const updatedOrder =
-        await tx.order.update({
-          where: {
-            id:
-              order.id,
-          },
-
-          data: {
-            orderNumber,
-          },
-        });
-
-      /* =====================================
-         📦 CREATE ORDER ITEMS
-      ===================================== */
-
-      for (const item of items) {
-        const unitPrice =
-          Number(
-            item.unit_price
-          );
-
-        const quantity =
-          Number(
-            item.quantity
-          );
-
-        const totalPrice =
-          unitPrice *
-          quantity;
-
-        await tx.orderItem.create({
-          data: {
-            orderId:
-              updatedOrder.id,
-
-            productId:
-              item.product_id,
-
-            quantity,
-
-            unitPrice,
-
-            price:
-              totalPrice,
-
-            selectedColor:
-              item.selectedColor ||
-              null,
-
-            selectedSize:
-              item.selectedSize ||
-              null,
-          },
-        });
-
-        /* =========================
-           UPDATE PRODUCT
-        ========================= */
-
-        const existingProduct =
-          await tx.product.findUnique({
-            where: {
-              id:
-                item.product_id,
-            },
-
-            select: {
-              sold: true,
-              stock: true,
-            },
-          });
-
-        await tx.product.update({
-          where: {
-            id:
-              item.product_id,
-          },
-
-          data: {
-            sold:
-              (existingProduct
-                ?.sold ||
-                0) +
-              quantity,
-
-            stock:
-              existingProduct
-                ?.stock !==
-                null
-                ? existingProduct.stock -
-                  quantity
-                : null,
-          },
-        });
-      }
-
-      /* =====================================
-         🛒 CLEAR CART
-      ===================================== */
-
-      await tx.cartItem.deleteMany({
+    /* =====================================
+       📦 VALIDATE STOCK
+    ====================================== */
+    for (const item of normalizedItems) {
+      const product = await tx.product.findUnique({
         where: {
-          userId,
+          id: item.productId,
+        },
+        select: {
+          id: true,
+          stock: true,
+          sold: true,
         },
       });
 
-      return {
-        orderId:
-          updatedOrder.id,
+      if (!product) {
+        throw new Error(`Product ${item.productId} not found`);
+      }
 
-        orderNumber:
-          orderNumber,
-      };
+      if (product.stock !== null && product.stock < item.quantity) {
+        throw new Error(`Insufficient stock for product ${item.productId}`);
+      }
+
+      computedTotal += item.unitPrice * item.quantity;
     }
-  );
+
+    const orderNumberPlaceholder = generateTemporaryOrderNumber();
+
+    /* =====================================
+       📝 CREATE ORDER
+    ====================================== */
+    const order = await tx.order.create({
+      data: {
+        userId,
+        orderNumber: orderNumberPlaceholder,
+        addressId: shippingAddress?.id ?? null,
+        shippingAddress: shippingAddress ?? {},
+        paymentMethod: paymentMethod ?? null,
+        paymentDetails: paymentDetails ?? {},
+        totalAmount: toSafeNumber(totalAmount, computedTotal),
+        status: "Pending",
+        deliveryDate: toNullableDate(deliveryDate),
+      },
+    });
+
+    const finalOrderNumber = generateOrderNumber(order.id);
+
+    const updatedOrder = await tx.order.update({
+      where: {
+        id: order.id,
+      },
+      data: {
+        orderNumber: finalOrderNumber,
+      },
+    });
+
+    /* =====================================
+       📦 CREATE ORDER ITEMS + UPDATE PRODUCT STOCK
+    ====================================== */
+    for (const item of normalizedItems) {
+      const lineTotal = item.unitPrice * item.quantity;
+
+      await tx.orderItem.create({
+        data: {
+          orderId: updatedOrder.id,
+          productId: item.productId,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          price: lineTotal,
+          selectedColor: item.selectedColor,
+          selectedSize: item.selectedSize,
+        },
+      });
+
+      const existingProduct = await tx.product.findUnique({
+        where: {
+          id: item.productId,
+        },
+        select: {
+          sold: true,
+          stock: true,
+        },
+      });
+
+      if (!existingProduct) {
+        throw new Error(`Product ${item.productId} not found`);
+      }
+
+      await tx.product.update({
+        where: {
+          id: item.productId,
+        },
+        data: {
+          sold: (existingProduct.sold || 0) + item.quantity,
+          stock:
+            existingProduct.stock !== null
+              ? existingProduct.stock - item.quantity
+              : null,
+        },
+      });
+    }
+
+    /* =====================================
+       🛒 CLEAR CART
+    ====================================== */
+    await tx.cartItem.deleteMany({
+      where: {
+        userId,
+      },
+    });
+
+    return {
+      orderId: updatedOrder.id,
+      orderNumber: finalOrderNumber,
+    };
+  });
 }
 
 /* =====================================================
-   🚚 ATTACH SHIPMENT
+   🚚 ATTACH / UPSERT SHIPMENT
 ===================================================== */
 
 export async function attachShipmentToOrderService({
   orderId,
-  shiprocketOrderId,
+  shiprocketOrderId = null,
   shipmentId = null,
   awbCode = null,
+  courierId = null,
+  courierName = null,
+  shipmentStatus = null,
+  pickupScheduledAt = null,
+  pickupTokenNumber = null,
+  assignedAt = null,
+  isReturn = false,
 }) {
-  const existingOrder =
-    await prisma.order.findUnique({
-      where: {
-        id: orderId,
-      },
-    });
-
-  if (!existingOrder) {
-    throw new Error(
-      "Order not found"
-    );
+  if (!orderId) {
+    throw new Error("orderId is required");
   }
 
-  await prisma.order.update({
+  const existingOrder = await prisma.order.findUnique({
     where: {
       id: orderId,
     },
+    select: {
+      id: true,
+    },
+  });
 
+  if (!existingOrder) {
+    throw new Error("Order not found");
+  }
+
+  const shipmentData = {
+    shiprocketOrderId: shiprocketOrderId !== null ? String(shiprocketOrderId) : null,
+    shipmentId: shipmentId !== null ? String(shipmentId) : null,
+    awbCode: awbCode !== null ? String(awbCode) : null,
+    courierId: courierId !== null && courierId !== undefined ? Number(courierId) : null,
+    courierName: courierName ?? null,
+    shipmentStatus: shipmentStatus ?? null,
+    pickupScheduledAt: toNullableDate(pickupScheduledAt),
+    pickupTokenNumber: pickupTokenNumber ?? null,
+    assignedAt: toNullableDate(assignedAt),
+    isReturn: Boolean(isReturn),
+  };
+
+  const existingShipment = await prisma.shipment.findUnique({
+    where: {
+      orderId,
+    },
+  });
+
+  if (existingShipment) {
+    await prisma.shipment.update({
+      where: {
+        orderId,
+      },
+      data: shipmentData,
+    });
+
+    return true;
+  }
+
+  await prisma.shipment.create({
     data: {
-      shiprocketOrderId:
-        shiprocketOrderId !== null &&
-        shiprocketOrderId !== undefined
-          ? String(
-              shiprocketOrderId
-            )
-          : null,
-
-      shipmentId:
-        shipmentId !== null &&
-        shipmentId !== undefined
-          ? String(
-              shipmentId
-            )
-          : null,
-
-      awbCode:
-        awbCode || null,
+      orderId,
+      ...shipmentData,
     },
   });
 
@@ -320,7 +332,7 @@ export async function attachShipmentToOrderService({
 }
 
 /* =====================================================
-   🚚 UPDATE SHIPMENT STATUS
+   🚚 UPDATE SHIPMENT STATUS + TRACKING EVENT
 ===================================================== */
 
 export async function updateOrderShipmentStatusService({
@@ -328,44 +340,74 @@ export async function updateOrderShipmentStatusService({
   shipmentStatus,
   awbCode = null,
   courierName = null,
-  trackingUrl = null,
+  courierId = null,
+  shiprocketOrderId = null,
+  shipmentId = null,
+  activity = null,
+  location = null,
+  scanTimestamp = null,
 }) {
-  const existingOrder =
-    await prisma.order.findUnique({
-      where: {
-        id: orderId,
-      },
-    });
-
-  if (!existingOrder) {
-    throw new Error(
-      "Order not found"
-    );
+  if (!orderId) {
+    throw new Error("orderId is required");
   }
 
-  return prisma.order.update({
+  const existingOrder = await prisma.order.findUnique({
     where: {
       id: orderId,
     },
-
-    data: {
-      shipmentStatus:
-        shipmentStatus ||
-        existingOrder.shipmentStatus,
-
-      awbCode:
-        awbCode ||
-        existingOrder.awbCode,
-
-      courierName:
-        courierName ||
-        existingOrder.courierName,
-
-      trackingUrl:
-        trackingUrl ||
-        existingOrder.trackingUrl,
+    select: {
+      id: true,
     },
   });
+
+  if (!existingOrder) {
+    throw new Error("Order not found");
+  }
+
+  const shipment = await prisma.shipment.findUnique({
+    where: {
+      orderId,
+    },
+  });
+
+  if (!shipment) {
+    throw new Error("Shipment not found for this order");
+  }
+
+  const updatedShipment = await prisma.shipment.update({
+    where: {
+      orderId,
+    },
+    data: {
+      shipmentStatus: shipmentStatus ?? shipment.shipmentStatus,
+      awbCode: awbCode !== null ? String(awbCode) : shipment.awbCode,
+      courierName: courierName ?? shipment.courierName,
+      courierId:
+        courierId !== null && courierId !== undefined
+          ? Number(courierId)
+          : shipment.courierId,
+      shiprocketOrderId:
+        shiprocketOrderId !== null
+          ? String(shiprocketOrderId)
+          : shipment.shiprocketOrderId,
+      shipmentId:
+        shipmentId !== null ? String(shipmentId) : shipment.shipmentId,
+    },
+  });
+
+  if (shipmentStatus || activity || location || scanTimestamp) {
+    await prisma.shipmentTracking.create({
+      data: {
+        shipmentId: updatedShipment.id,
+        status: shipmentStatus ?? updatedShipment.shipmentStatus ?? "Unknown",
+        activity: activity ?? shipmentStatus ?? "Shipment updated",
+        location: location ?? null,
+        scanTimestamp: toNullableDate(scanTimestamp),
+      },
+    });
+  }
+
+  return updatedShipment;
 }
 
 /* =====================================================
@@ -374,21 +416,15 @@ export async function updateOrderShipmentStatusService({
 
 export async function getUserOrdersService(
   userId,
-  {
-    page = 1,
-    limit = 10,
-    status,
-  }
+  { page = 1, limit = 10, status }
 ) {
-  const currentPage =
-    Number(page) || 1;
+  if (!userId) {
+    throw new Error("userId is required");
+  }
 
-  const pageLimit =
-    Number(limit) || 10;
-
-  const skip =
-    (currentPage - 1) *
-    pageLimit;
+  const currentPage = Number(page) || 1;
+  const pageLimit = Number(limit) || 10;
+  const skip = (currentPage - 1) * pageLimit;
 
   const where = {
     userId,
@@ -401,256 +437,153 @@ export async function getUserOrdersService(
     };
   }
 
-  const orders =
-    await prisma.order.findMany({
-      where,
-
-      skip,
-
-      take:
-        pageLimit,
-
-      orderBy: {
-        createdAt:
-          "desc",
+  const orders = await prisma.order.findMany({
+    where,
+    skip,
+    take: pageLimit,
+    orderBy: {
+      createdAt: "desc",
+    },
+    include: {
+      items: {
+        include: {
+          product: true,
+        },
       },
-
-      include: {
-        items: {
-          include: {
-            product: true,
+      shipment: {
+        include: {
+          trackingEvents: {
+            orderBy: {
+              createdAt: "asc",
+            },
           },
         },
       },
-    });
+      address: true,
+    },
+  });
 
-  return orders.map(
-    (order) => ({
-      ...order,
-
-      items:
-        order.items.map(
-          (item) => {
-            const images =
-              parseImages(
-                item.product
-                  ?.images
-              );
-
-            return {
-              id:
-                item.productId,
-
-              name:
-                item.product
-                  ?.name ||
-                null,
-
-              image:
-                images[0] ||
-                null,
-
-              images,
-
-              quantity:
-                item.quantity,
-
-              price:
-                item.price,
-
-              options: {
-                color:
-                  item.selectedColor,
-
-                size:
-                  item.selectedSize,
-              },
-            };
-          }
-        ),
-    })
-  );
+  return orders.map(buildOrderView);
 }
 
 /* =====================================================
    📦 GET SINGLE ORDER
 ===================================================== */
 
-export async function getOrderByIdService(
-  userId,
-  orderId
-) {
-  const order =
-    await prisma.order.findFirst({
-      where: {
-        id: orderId,
-        userId,
+export async function getOrderByIdService(userId, orderId) {
+  const order = await prisma.order.findFirst({
+    where: {
+      id: orderId,
+      userId,
+    },
+    include: {
+      items: {
+        include: {
+          product: true,
+        },
       },
-
-      include: {
-        items: {
-          include: {
-            product: true,
+      shipment: {
+        include: {
+          trackingEvents: {
+            orderBy: {
+              createdAt: "asc",
+            },
           },
         },
       },
-    });
+      address: true,
+    },
+  });
 
   if (!order) {
-    throw new Error(
-      "Order not found"
-    );
+    throw new Error("Order not found");
   }
 
-  const items =
-    order.items.map(
-      (item) => {
-        const images =
-          parseImages(
-            item.product
-              ?.images
-          );
-
-        return {
-          id:
-            item.productId,
-
-          name:
-            item.product
-              ?.name ||
-            null,
-
-          image:
-            images[0] ||
-            null,
-
-          images,
-
-          quantity:
-            item.quantity,
-
-          price:
-            item.price,
-
-          options: {
-            color:
-              item.selectedColor,
-
-            size:
-              item.selectedSize,
-          },
-        };
-      }
-    );
-
-  return {
-    ...order,
-    items,
-  };
+  return buildOrderView(order);
 }
 
 /* =====================================================
    ❌ CANCEL ORDER
 ===================================================== */
 
-export async function cancelOrderService(
-  userId,
-  orderId
-) {
-  const order =
-    await prisma.order.findFirst({
+export async function cancelOrderService(userId, orderId) {
+  const order = await prisma.order.findFirst({
+    where: {
+      id: orderId,
+      userId,
+    },
+    include: {
+      items: true,
+      shipment: true,
+    },
+  });
+
+  if (!order) {
+    throw new Error("Order not found");
+  }
+
+  const allowedStatuses = ["pending", "confirmed", "packed"];
+
+  if (!allowedStatuses.includes(String(order.status || "").toLowerCase())) {
+    throw new Error("Order cannot be cancelled");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.order.update({
       where: {
         id: orderId,
-        userId,
       },
-
-      include: {
-        items: true,
+      data: {
+        status: "Cancelled",
       },
     });
 
-  if (!order) {
-    throw new Error(
-      "Order not found"
-    );
-  }
-
-  const allowedStatuses =
-    [
-      "pending",
-      "confirmed",
-      "shipped",
-      "packed",
-    ];
-
-  if (
-    !allowedStatuses.includes(
-      order.status.toLowerCase()
-    )
-  ) {
-    throw new Error(
-      "Order cannot be cancelled"
-    );
-  }
-
-  await prisma.$transaction(
-    async (tx) => {
-      await tx.order.update({
+    if (order.shipment) {
+      await tx.shipment.update({
         where: {
-          id: orderId,
+          orderId,
         },
-
         data: {
-          status:
-            "cancelled",
+          shipmentStatus: "Cancelled",
         },
       });
 
-      for (const item of order.items) {
-        const product =
-          await tx.product.findUnique({
-            where: {
-              id:
-                item.productId,
-            },
-
-            select: {
-              id: true,
-              stock: true,
-              sold: true,
-            },
-          });
-
-        if (!product) {
-          continue;
-        }
-
-        await tx.product.update({
-          where: {
-            id:
-              item.productId,
-          },
-
-          data: {
-            stock:
-              product.stock !==
-              null
-                ? product.stock +
-                  item.quantity
-                : null,
-
-            sold:
-              Math.max(
-                0,
-                (product.sold ||
-                  0) -
-                  item.quantity
-              ),
-          },
-        });
-      }
+      await tx.shipmentTracking.create({
+        data: {
+          shipmentId: order.shipment.id,
+          status: "Cancelled",
+          activity: "Order cancelled by user",
+          location: null,
+          scanTimestamp: new Date(),
+        },
+      });
     }
-  );
+
+    for (const item of order.items) {
+      const product = await tx.product.findUnique({
+        where: {
+          id: item.productId,
+        },
+        select: {
+          id: true,
+          stock: true,
+          sold: true,
+        },
+      });
+
+      if (!product) continue;
+
+      await tx.product.update({
+        where: {
+          id: item.productId,
+        },
+        data: {
+          stock: product.stock !== null ? product.stock + item.quantity : null,
+          sold: Math.max(0, (product.sold || 0) - item.quantity),
+        },
+      });
+    }
+  });
 
   return true;
 }
@@ -659,132 +592,128 @@ export async function cancelOrderService(
    🔁 REORDER
 ===================================================== */
 
-export async function reorderService(
-  userId,
-  orderId
-) {
-  const oldOrder =
-    await prisma.order.findFirst({
-      where: {
-        id: orderId,
-        userId,
-      },
-
-      include: {
-        items: true,
-      },
-    });
+export async function reorderService(userId, orderId) {
+  const oldOrder = await prisma.order.findFirst({
+    where: {
+      id: orderId,
+      userId,
+    },
+    include: {
+      items: true,
+    },
+  });
 
   if (!oldOrder) {
-    throw new Error(
-      "Order not found"
-    );
+    throw new Error("Order not found");
   }
 
-  if (
-    !oldOrder.items.length
-  ) {
-    throw new Error(
-      "No items to reorder"
-    );
+  if (!oldOrder.items.length) {
+    throw new Error("No items to reorder");
   }
 
-  const newOrder =
-    await prisma.order.create({
+  const normalizedItems = oldOrder.items.map((item) => ({
+    productId: item.productId,
+    quantity: item.quantity,
+    unitPrice: item.unitPrice,
+    selectedColor: item.selectedColor,
+    selectedSize: item.selectedSize,
+  }));
+
+  return prisma.$transaction(async (tx) => {
+    /* =====================================
+       📦 VALIDATE STOCK AGAIN
+    ====================================== */
+    for (const item of normalizedItems) {
+      const product = await tx.product.findUnique({
+        where: {
+          id: item.productId,
+        },
+        select: {
+          id: true,
+          stock: true,
+        },
+      });
+
+      if (!product) {
+        throw new Error(`Product ${item.productId} not found`);
+      }
+
+      if (product.stock !== null && product.stock < item.quantity) {
+        throw new Error(`Insufficient stock for product ${item.productId}`);
+      }
+    }
+
+    const orderNumberPlaceholder = generateTemporaryOrderNumber();
+
+    const newOrder = await tx.order.create({
       data: {
         userId,
-
-        totalAmount:
-          oldOrder.totalAmount,
-
-        status:
-          "Pending",
-
-        paymentMethod:
-          oldOrder.paymentMethod,
-
-        paymentDetails:
-          oldOrder.paymentDetails,
-
-        shippingAddress:
-          oldOrder.shippingAddress,
-
-        addressId:
-          oldOrder.addressId,
-
-        deliveryDate:
-          oldOrder.deliveryDate,
+        orderNumber: orderNumberPlaceholder,
+        totalAmount: oldOrder.totalAmount,
+        status: "Pending",
+        paymentMethod: oldOrder.paymentMethod,
+        paymentDetails: oldOrder.paymentDetails,
+        shippingAddress: oldOrder.shippingAddress,
+        addressId: oldOrder.addressId,
+        deliveryDate: oldOrder.deliveryDate,
       },
     });
 
-  for (const item of oldOrder.items) {
-    await prisma.orderItem.create({
+    const finalOrderNumber = generateOrderNumber(newOrder.id);
+
+    const updatedOrder = await tx.order.update({
+      where: {
+        id: newOrder.id,
+      },
       data: {
-        orderId:
-          newOrder.id,
-
-        productId:
-          item.productId,
-
-        quantity:
-          item.quantity,
-
-        unitPrice:
-          item.unitPrice,
-
-        price:
-          item.price,
-
-        selectedColor:
-          item.selectedColor,
-
-        selectedSize:
-          item.selectedSize,
+        orderNumber: finalOrderNumber,
       },
     });
 
-    const existingProduct =
-      await prisma.product.findUnique({
-        where: {
-          id:
-            item.productId,
+    for (const item of normalizedItems) {
+      await tx.orderItem.create({
+        data: {
+          orderId: updatedOrder.id,
+          productId: item.productId,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          price: item.unitPrice * item.quantity,
+          selectedColor: item.selectedColor,
+          selectedSize: item.selectedSize,
         },
+      });
 
+      const existingProduct = await tx.product.findUnique({
+        where: {
+          id: item.productId,
+        },
         select: {
           stock: true,
           sold: true,
         },
       });
 
-    if (
-      existingProduct
-    ) {
-      await prisma.product.update({
+      if (!existingProduct) {
+        throw new Error(`Product ${item.productId} not found`);
+      }
+
+      await tx.product.update({
         where: {
-          id:
-            item.productId,
+          id: item.productId,
         },
-
         data: {
-          sold:
-            (existingProduct
-              ?.sold ||
-              0) +
-            item.quantity,
-
+          sold: (existingProduct.sold || 0) + item.quantity,
           stock:
-            existingProduct.stock !==
-            null
-              ? existingProduct.stock -
-                item.quantity
+            existingProduct.stock !== null
+              ? existingProduct.stock - item.quantity
               : null,
         },
       });
     }
-  }
 
-  return {
-    orderId:
-      newOrder.id,
-  };
+    return {
+      orderId: updatedOrder.id,
+      orderNumber: finalOrderNumber,
+    };
+  });
 }
