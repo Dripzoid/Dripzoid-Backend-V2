@@ -1,18 +1,71 @@
 // src/controllers/shipping.controller.js
 import {
+  /* ==========================================
+     AWB
+  ========================================== */
   assignAWBToShipment,
+
+  /* ==========================================
+     PICKUP
+  ========================================== */
   requestPickupForShipment,
+
+  /* ==========================================
+     COURIERS
+  ========================================== */
   getAvailableCouriers,
-  getTrackingDetails,
-  syncShipmentTracking,
-  getInvoiceUrl,
-  downloadInvoiceForShipment,
-  cancelShipmentForShipment,
-  cancelShipment,
+  listActiveCouriers,
+
+  /* ==========================================
+     SERVICEABILITY
+  ========================================== */
   checkServiceabilityAndStore,
   getDeliveryEstimateService,
-  listActiveCouriers,
+
+  /* ==========================================
+     TRACKING
+  ========================================== */
+  getTrackingDetails,
+  syncShipmentTracking,
+
+  /* ==========================================
+     SHIPMENTS
+  ========================================== */
   getShipmentDetails,
+
+  /* ==========================================
+     INVOICES
+  ========================================== */
+  getInvoiceUrl,
+  downloadInvoiceForShipment,
+
+  /* ==========================================
+     CANCELLATION
+  ========================================== */
+  cancelShipment,
+  cancelShipmentForShipment,
+
+  /* ==========================================
+     SHIPROCKET ORDERS
+  ========================================== */
+  getShiprocketOrders,
+  getShiprocketOrderDetails,
+
+  /* ==========================================
+     RETURNS
+  ========================================== */
+  createReturnOrder,
+  updateReturnOrder,
+  getReturnOrders,
+
+  /* ==========================================
+     EXCHANGE
+  ========================================== */
+  createExchangeOrder,
+
+  /* ==========================================
+     WEBHOOKS
+  ========================================== */
   processShiprocketWebhook,
 } from "./shiprocket.service.js";
 
@@ -447,6 +500,127 @@ export async function processShiprocketWebhookController(req, res, next) {
     const response = await processShiprocketWebhook(req.body);
 
     return res.status(200).json({
+      success: true,
+      data: response,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getShiprocketOrdersController(
+  req,
+  res,
+  next
+) {
+  try {
+    const response =
+      await getShiprocketOrders(
+        req.query
+      );
+
+    return res.status(200).json({
+      success: true,
+      data: response,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getShiprocketOrderController(
+  req,
+  res,
+  next
+) {
+  try {
+    const {
+      shiprocketOrderId,
+    } = req.params;
+
+    const response =
+      await getShiprocketOrderDetails(
+        shiprocketOrderId
+      );
+
+    return res.status(200).json({
+      success: true,
+      data: response,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function createReturnOrderController(
+  req,
+  res,
+  next
+) {
+  try {
+    const response =
+      await createReturnOrder(
+        req.body
+      );
+
+    return res.status(201).json({
+      success: true,
+      data: response,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+export async function updateReturnOrderController(
+  req,
+  res,
+  next
+) {
+  try {
+    const response =
+      await updateReturnOrder(
+        req.body
+      );
+
+    return res.status(200).json({
+      success: true,
+      data: response,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+export async function getReturnOrdersController(
+  req,
+  res,
+  next
+) {
+  try {
+    const response =
+      await getReturnOrders(
+        req.query
+      );
+
+    return res.status(200).json({
+      success: true,
+      data: response,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+export async function createExchangeOrderController(
+  req,
+  res,
+  next
+) {
+  try {
+    const response =
+      await createExchangeOrder(
+        req.body
+      );
+
+    return res.status(201).json({
       success: true,
       data: response,
     });
