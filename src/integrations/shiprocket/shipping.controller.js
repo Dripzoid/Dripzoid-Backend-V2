@@ -1,7 +1,194 @@
 import {
-  checkServiceability,
-  getDeliveryEstimateService,
+  generateAWB,
+  requestPickup,
+  getAvailableCouriers,
+  getTrackingDetails,
+  getInvoiceUrl,
+  cancelShipment,
 } from "./shiprocket.service.js";
+
+export async function assignAWBController(
+  req,
+  res,
+  next
+) {
+  try {
+    const {
+      shipment_id,
+      courier_id,
+    } = req.body;
+
+    if (
+      !shipment_id ||
+      !courier_id
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "shipment_id and courier_id required",
+      });
+    }
+
+    const response =
+      await generateAWB({
+        shipment_id,
+        courier_id,
+      });
+
+    return res.status(200).json({
+      success: true,
+      data: response,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getCouriersController(
+  req,
+  res,
+  next
+) {
+  try {
+    const {
+      pincode,
+      weight = 0.5,
+      cod = 0,
+      length = 10,
+      breadth = 10,
+      height = 5,
+      declared_value = 500,
+      mode = "Surface",
+    } = req.query;
+
+    const response =
+      await getAvailableCouriers({
+        pickup_postcode:
+          process.env.WAREHOUSE_PINCODE,
+
+        delivery_postcode:
+          pincode,
+
+        weight,
+        cod,
+        length,
+        breadth,
+        height,
+        declared_value,
+        mode,
+      });
+
+    return res.status(200).json({
+      success: true,
+      data:
+        response?.data
+          ?.available_courier_companies ||
+        [],
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+export async function requestPickupController(
+  req,
+  res,
+  next
+) {
+  try {
+    const { shipment_id } =
+      req.body;
+
+    if (!shipment_id) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "shipment_id required",
+      });
+    }
+
+    const response =
+      await requestPickup(
+        shipment_id
+      );
+
+    return res.status(200).json({
+      success: true,
+      data: response,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function trackShipmentController(
+  req,
+  res,
+  next
+) {
+  try {
+    const {
+      shiprocketOrderId,
+    } = req.params;
+
+    const response =
+      await getTrackingDetails(
+        shiprocketOrderId
+      );
+
+    return res.status(200).json({
+      success: true,
+      data: response,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+export async function getInvoiceController(
+  req,
+  res,
+  next
+) {
+  try {
+    const {
+      shiprocketOrderId,
+    } = req.params;
+
+    const response =
+      await getInvoiceUrl(
+        shiprocketOrderId
+      );
+
+    return res.status(200).json({
+      success: true,
+      data: response,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+export async function cancelShipmentController(
+  req,
+  res,
+  next
+) {
+  try {
+    const {
+      shiprocketOrderId,
+    } = req.body;
+
+    const response =
+      await cancelShipment(
+        shiprocketOrderId
+      );
+
+    return res.status(200).json({
+      success: true,
+      data: response,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
 
 /* =====================================================
    📦 DELIVERY ESTIMATE
