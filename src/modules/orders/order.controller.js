@@ -22,6 +22,9 @@ import {
   AppError,
 } from "../../errors/AppError.js";
 
+import { queueOrderCreatedEvent }
+  from "./order.events.js";
+
 /* =====================================================
    🚀 PLACE ORDER
 ===================================================== */
@@ -252,6 +255,38 @@ const {
         // DO NOT FAIL ORDER
         // Local order already exists
       }
+
+      /* =========================================
+   🤖 AUTOMATION EVENT
+========================================= */
+
+try {
+  await queueOrderCreatedEvent({
+    order: {
+      orderId,
+      orderNumber,
+
+      totalAmount,
+
+      deliveryDate,
+
+      shipmentId:
+        shiprocket?.shipment_id,
+
+      shiprocketOrderId:
+        shiprocket?.order_id,
+    },
+
+    user: req.user,
+  });
+} catch (automationErr) {
+  console.error(
+    "⚠️ Order automation failed:",
+    automationErr.message
+  );
+
+  // NON-BLOCKING
+}
 
       /* =========================================
          📝 USER ACTIVITY LOG
