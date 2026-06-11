@@ -168,7 +168,7 @@ function normalizeShiprocketStatus(rawStatus) {
   return SHIPROCKET_STATUS_MAP[normalizedKey] || String(rawStatus).trim();
 }
 
-function isOrderTerminalStatus(status) {
+export function isOrderTerminalStatus(status) {
   return ["Cancelled", "RefundInitiated", "RefundProcessed", "Returned"].includes(
     status
   );
