@@ -35,10 +35,10 @@ const TERMINAL_SHIPMENT_STATUSES = new Set([
 
 const SHIPMENT_TO_ORDER_STATUS_MAP = {
   Confirmed: "Confirmed",
-  Packed: "Processing",
-  "Pickup Scheduled": "Processing",
+  Packed: "Packed",
+  "Pickup Scheduled": "Packed",
   Shipped: "Shipped",
-  "Out For Delivery": "Shipped",
+  "Out For Delivery": "Out For Delivery",
   Delivered: "Delivered",
   Cancelled: "Cancelled",
   "RTO Initiated": "Returned",
@@ -1568,7 +1568,11 @@ export async function processShiprocketWebhook(payload) {
   const updatedShipment = await updateShipmentStatus({
     shipmentDbId: shipment.id,
     shipmentStatus: shipmentStatus || shipment.shipmentStatus,
-    orderStatus: getOrderStatusFromShipmentStatus(shipmentStatus),
+    orderStatus: getOrderStatusFromShipmentStatus(shipmentStatus),orderStatus:
+  getOrderStatusFromShipmentStatus(
+    shipmentStatus ||
+    shipment.shipmentStatus
+  ),
     activity: activity || "Webhook update",
     location,
     scanTimestamp,
