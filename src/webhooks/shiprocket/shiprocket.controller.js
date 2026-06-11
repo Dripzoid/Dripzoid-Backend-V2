@@ -9,15 +9,27 @@ export async function handleShiprocketWebhook(
   res
 ) {
   try {
+    const webhookKey =
+      req.headers["x-api-key"];
+
+    if (
+      webhookKey !==
+      process.env.SHIPROCKET_WEBHOOK_SECRET
+    ) {
+      return res.sendStatus(401);
+    }
+
     await processShiprocketWebhook(
       req.body
     );
+
+    return res.sendStatus(200);
   } catch (error) {
     console.error(
       "Shiprocket Webhook Error:",
       error
     );
-  }
 
-  return res.sendStatus(200);
+    return res.sendStatus(200);
+  }
 }
