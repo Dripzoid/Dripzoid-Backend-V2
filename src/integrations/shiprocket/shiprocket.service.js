@@ -410,6 +410,26 @@ async function upsertCourierFromShiprocket(courier) {
   });
 }
 
+export async function findShipment(
+  identifier,
+  include = {}
+) {
+  return prisma.shipment.findFirst({
+    where: {
+      OR: [
+        {
+          id: String(identifier),
+        },
+        {
+          shipmentId: String(identifier),
+        },
+      ],
+    },
+
+    include,
+  });
+}
+
 async function emitOrderEvent(eventName, payload) {
   // Placeholder for your future event bus / queue / webhook emitter.
   // Replace this with Kafka, RabbitMQ, Redis streams, or your internal bus.
@@ -628,11 +648,8 @@ export async function assignAWBToShipment({ shipmentDbId, courierId }) {
     throw new Error("shipmentDbId is required");
   }
 
-  const shipment = await prisma.shipment.findUnique({
-    where: { id: shipmentDbId },
-    include: {
-      order: true,
-    },
+  const shipment = await findShipment(shipmentDbId, {
+    order: true,
   });
 
   if (!shipment) {
@@ -665,7 +682,9 @@ export async function assignAWBToShipment({ shipmentDbId, courierId }) {
 
   const updatedShipment = await prisma.$transaction(async (tx) => {
     const next = await tx.shipment.update({
-      where: { id: shipmentDbId },
+      where: {
+        id: shipment.id,
+      },
       data: {
         awbCode: awbCode || shipment.awbCode,
         courierId: chosenCourierId,
@@ -676,7 +695,7 @@ export async function assignAWBToShipment({ shipmentDbId, courierId }) {
     });
 
     await appendTrackingEventWithClient(tx, {
-      shipmentDbId,
+      shipmentDbId: shipment.id,
       status: "AWB Assigned",
       activity: awbCode ? `AWB generated: ${awbCode}` : "AWB generated",
       location: "System",
@@ -716,9 +735,7 @@ export async function requestPickupForShipment(shipmentDbId) {
     throw new Error("shipmentDbId is required");
   }
 
-  const shipment = await prisma.shipment.findUnique({
-    where: { id: shipmentDbId },
-  });
+  const shipment = await findShipment(shipmentDbId);
 
   if (!shipment) {
     throw new Error("Shipment not found");
@@ -736,7 +753,7 @@ export async function requestPickupForShipment(shipmentDbId) {
 
   const updatedShipment = await prisma.$transaction(async (tx) => {
     const next = await tx.shipment.update({
-      where: { id: shipmentDbId },
+      where: { id: shipment.id },
       data: {
         pickupScheduledAt: new Date(),
         pickupTokenNumber:
@@ -750,13 +767,13 @@ export async function requestPickupForShipment(shipmentDbId) {
           ),
         shipmentStatus: getMutableShipmentStatus(
           shipment.shipmentStatus,
-          normalizeShiprocketStatus("PICKUP_GENERATED") // "Packed"
+          normalizeShiprocketStatus("PICKUP_GENERATED")
         ),
       },
     });
 
     await appendTrackingEventWithClient(tx, {
-      shipmentDbId,
+      shipmentDbId: shipment.id,
       status: normalizeShiprocketStatus("PICKUP_GENERATED"),
       activity: "Pickup requested",
       location: "System",
@@ -1105,11 +1122,8 @@ export async function syncShipmentTracking(shipmentDbId) {
     throw new Error("shipmentDbId is required");
   }
 
-  const shipment = await prisma.shipment.findUnique({
-    where: { id: shipmentDbId },
-    include: {
-      order: true,
-    },
+  const shipment = await findShipment(shipmentDbId, {
+    order: true,
   });
 
   if (!shipment) {
@@ -1150,7 +1164,7 @@ export async function syncShipmentTracking(shipmentDbId) {
 
   await prisma.$transaction(async (tx) => {
     const existing = await tx.shipmentTracking.findMany({
-      where: { shipmentId: shipmentDbId },
+      where: { shipmentId: shipment.id },
       select: {
         status: true,
         activity: true,
@@ -1170,7 +1184,7 @@ export async function syncShipmentTracking(shipmentDbId) {
     if (rowsToInsert.length) {
       await tx.shipmentTracking.createMany({
         data: rowsToInsert.map((evt) => ({
-          shipmentId: shipmentDbId,
+          shipmentId: shipment.id,
           status: evt.status || "Unknown",
           activity: evt.activity || evt.status || "Tracking update",
           location: evt.location || null,
@@ -1185,7 +1199,7 @@ export async function syncShipmentTracking(shipmentDbId) {
       );
 
       await tx.shipment.update({
-        where: { id: shipmentDbId },
+        where: { id: shipment.id },
         data: {
           shipmentStatus: normalizedShipmentStatus || shipment.shipmentStatus,
         },
@@ -1195,7 +1209,7 @@ export async function syncShipmentTracking(shipmentDbId) {
 
   return {
     success: true,
-    shipmentId: shipmentDbId,
+    shipmentId: shipment.id,
     events: deduped,
     raw: response,
   };
@@ -1206,31 +1220,18 @@ export async function syncShipmentTracking(shipmentDbId) {
 ===================================================== */
 
 export async function getShipmentDetails(identifier) {
-  return prisma.shipment.findFirst({
-    where: {
-      OR: [
-        {
-          id: identifier,
-        },
-        {
-          shipmentId: String(identifier),
-        },
-      ],
+  return findShipment(identifier, {
+    order: {
+      include: {
+        user: true,
+        address: true,
+        items: true,
+      },
     },
 
-    include: {
-      order: {
-        include: {
-          user: true,
-          address: true,
-          items: true,
-        },
-      },
-
-      trackingEvents: {
-        orderBy: {
-          createdAt: "desc",
-        },
+    trackingEvents: {
+      orderBy: {
+        createdAt: "desc",
       },
     },
   });
@@ -1273,9 +1274,7 @@ export async function downloadInvoiceForShipment(shipmentDbId) {
     throw new Error("shipmentDbId is required");
   }
 
-  const shipment = await prisma.shipment.findUnique({
-    where: { id: shipmentDbId },
-  });
+  const shipment = await findShipment(shipmentDbId);
 
   if (!shipment) {
     throw new Error("Shipment not found");
@@ -1308,9 +1307,7 @@ export async function cancelShipmentForShipment(shipmentDbId) {
     throw new Error("shipmentDbId is required");
   }
 
-  const shipment = await prisma.shipment.findUnique({
-    where: { id: shipmentDbId },
-  });
+  const shipment = await findShipment(shipmentDbId);
 
   if (!shipment) {
     throw new Error("Shipment not found");
@@ -1321,7 +1318,7 @@ export async function cancelShipmentForShipment(shipmentDbId) {
 
   await prisma.$transaction(async (tx) => {
     await tx.shipment.update({
-      where: { id: shipmentDbId },
+      where: { id: shipment.id },
       data: {
         shipmentStatus: normalizeShiprocketStatus("CANCELED"),
       },
@@ -1335,7 +1332,7 @@ export async function cancelShipmentForShipment(shipmentDbId) {
     });
 
     await appendTrackingEventWithClient(tx, {
-      shipmentDbId,
+      shipmentDbId: shipment.id,
       status: normalizeShiprocketStatus("CANCELED"),
       activity: "Shipment cancelled",
       location: "System",
@@ -1397,7 +1394,6 @@ export async function updateShipmentStatus({
     });
   });
 }
-
 
 /* =====================================================
    OPTIONAL: SYNC SHIPROCKET COURIERS INTO DB
@@ -1580,4 +1576,5 @@ export default {
      EXCHANGE
   ========================================== */
   createExchangeOrder,
+
 };
