@@ -735,7 +735,11 @@ export async function requestPickupForShipment(shipmentDbId) {
     throw new Error("shipmentDbId is required");
   }
 
-  const shipment = await findShipment(shipmentDbId);
+  const shipment = await prisma.shipment.findFirst({
+  where: {
+    shipmentId: String(shipmentDbId),
+  },
+});
 
   if (!shipment) {
     throw new Error("Shipment not found");
