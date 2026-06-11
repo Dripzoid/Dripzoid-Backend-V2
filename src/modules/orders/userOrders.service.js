@@ -399,8 +399,21 @@ export async function cancelOrderService(
       }
     }
   );
+const updatedOrder =
+  await prisma.order.findUnique({
+    where: {
+      id: orderId,
+    },
 
-  return true;
+    select: {
+      id: true,
+      orderNumber: true,
+      paymentMethod: true,
+      status: true,
+    },
+  });
+
+return updatedOrder;
 }
 
 /* =====================================================
