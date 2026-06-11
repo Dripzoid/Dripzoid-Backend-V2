@@ -9,62 +9,155 @@ export async function queueOrderCreatedEvent({
   user,
 }) {
   const payload = {
-    customer_name: user.name,
-    email: user.email,
+    customer_name: user?.name,
+    email: user?.email,
 
-    user_id: user.id,
+    user_id: user?.id,
 
-    order_id: order.orderId,
-    order_number: order.orderNumber,
+    order_id: order?.orderId,
+    order_number: order?.orderNumber,
 
     order_date: new Date().toISOString(),
 
-    order_total: order.totalAmount,
+    order_total: order?.totalAmount,
 
-    order_url: `${process.env.CLIENT_URL}/orders/${order.orderId}`,
+    order_url: `${process.env.CLIENT_URL}/orders/${order?.orderId}`,
 
-    shipment_id: order.shipmentId || null,
+    shipment_id:
+      order?.shipmentId || null,
+
     shiprocket_order_id:
-      order.shiprocketOrderId || null,
+      order?.shiprocketOrderId || null,
 
     delivery_date:
-      order.deliveryDate || null,
+      order?.deliveryDate || null,
   };
 
   try {
-    await triggerAutomationEvent(
-      EVENT_TYPES.ORDER_CREATED,
-      payload
+    console.log(
+      "🚀 Triggering ORDER_CREATED automation..."
+    );
+
+    console.log(
+      "📦 Event Payload:",
+      JSON.stringify(payload, null, 2)
+    );
+
+    const response =
+      await triggerAutomationEvent(
+        EVENT_TYPES.ORDER_CREATED,
+        payload
+      );
+
+    console.log(
+      "✅ ORDER_CREATED automation triggered successfully"
+    );
+
+    console.log(
+      "📨 Automation Response:",
+      {
+        status: response?.status,
+        data: response?.data,
+      }
     );
   } catch (error) {
     console.error(
-      "Automation ORDER_CREATED failed:",
-      error.message
+      "\n❌ ORDER_CREATED AUTOMATION FAILED"
+    );
+
+    console.error(
+      "Event Type:",
+      EVENT_TYPES.ORDER_CREATED
+    );
+
+    console.error(
+      "Payload:",
+      JSON.stringify(payload, null, 2)
+    );
+
+    console.error(
+      "Message:",
+      error?.message
+    );
+
+    console.error(
+      "Status:",
+      error?.response?.status
+    );
+
+    console.error(
+      "Status Text:",
+      error?.response?.statusText
+    );
+
+    console.error(
+      "Response Data:",
+      JSON.stringify(
+        error?.response?.data,
+        null,
+        2
+      )
+    );
+
+    console.error(
+      "Request URL:",
+      error?.config?.url
+    );
+
+    console.error(
+      "Stack:",
+      error?.stack
     );
 
     try {
-      await prisma.scheduledTask.create({
-        data: {
-          taskType:
-            "RETRY_AUTOMATION_EVENT",
+      const retryTask =
+        await prisma.scheduledTask.create({
+          data: {
+            taskType:
+              "RETRY_AUTOMATION_EVENT",
 
-          payload: {
-            eventType:
-              EVENT_TYPES.ORDER_CREATED,
-            payload,
+            payload: {
+              eventType:
+                EVENT_TYPES.ORDER_CREATED,
+              payload,
+            },
+
+            executeAt: new Date(
+              Date.now() +
+                5 * 60 * 1000
+            ),
+
+            lastError:
+              JSON.stringify({
+                message:
+                  error?.message,
+                status:
+                  error?.response
+                    ?.status,
+                response:
+                  error?.response
+                    ?.data,
+              }),
           },
+        });
 
-          executeAt: new Date(
-            Date.now() + 5 * 60 * 1000
-          ),
-
-          lastError: error.message,
-        },
-      });
+      console.log(
+        "🔄 Retry task created:",
+        retryTask.id
+      );
     } catch (scheduleError) {
       console.error(
-        "Failed to create retry task:",
-        scheduleError.message
+        "❌ Failed to create retry task"
+      );
+
+      console.error(
+        "Message:",
+        scheduleError?.message
+      );
+
+      console.error(
+        "Stack:",
+        scheduleError?.stack
       );
     }
   }
