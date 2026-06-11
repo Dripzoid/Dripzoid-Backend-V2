@@ -6,20 +6,28 @@ import {
   getDeliveryEstimate,
   checkDeliveryServiceability,
 
-  assignAWBController,
   getCouriersController,
   listCouriersController,
 
+  assignAWBController,
   requestPickupController,
+  getShipmentController,
 
   trackShipmentController,
   syncShipmentTrackingController,
 
-  getShipmentController,
-
   getInvoiceController,
 
   cancelShipmentController,
+
+  getShiprocketOrdersController,
+  getShiprocketOrderController,
+
+  createReturnOrderController,
+  updateReturnOrderController,
+  getReturnOrdersController,
+
+  createExchangeOrderController,
 
   processShiprocketWebhookController,
 } from "./shipping.controller.js";
@@ -160,6 +168,48 @@ router.post(
 router.post(
   "/webhook/shiprocket",
   processShiprocketWebhookController
+);
+
+/* =====================================================
+   SHIPROCKET ORDERS
+===================================================== */
+
+router.get(
+  "/orders",
+  getShiprocketOrdersController
+);
+
+router.get(
+  "/orders/:shiprocketOrderId",
+  getShiprocketOrderController
+);
+
+/* =====================================================
+   RETURNS
+===================================================== */
+
+router.post(
+  "/returns",
+  createReturnOrderController
+);
+
+router.put(
+  "/returns",
+  updateReturnOrderController
+);
+
+router.get(
+  "/returns",
+  getReturnOrdersController
+);
+
+/* =====================================================
+   EXCHANGE
+===================================================== */
+
+router.post(
+  "/exchange",
+  createExchangeOrderController
 );
 
 export default router;
