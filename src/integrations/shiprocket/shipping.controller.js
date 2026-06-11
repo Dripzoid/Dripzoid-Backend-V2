@@ -62,11 +62,6 @@ import {
      EXCHANGE
   ========================================== */
   createExchangeOrder,
-
-  /* ==========================================
-     WEBHOOKS
-  ========================================== */
-  processShiprocketWebhook,
 } from "./shiprocket.service.js";
 
 function parseNumber(value, fallback = null) {
@@ -491,22 +486,6 @@ export async function cancelShipmentController(req, res, next) {
   }
 }
 
-/* =====================================================
-   SHIPROCKET WEBHOOK
-===================================================== */
-
-export async function processShiprocketWebhookController(req, res, next) {
-  try {
-    const response = await processShiprocketWebhook(req.body);
-
-    return res.status(200).json({
-      success: true,
-      data: response,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
 
 export async function getShiprocketOrdersController(
   req,
