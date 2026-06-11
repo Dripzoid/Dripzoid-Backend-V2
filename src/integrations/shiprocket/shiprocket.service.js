@@ -1642,34 +1642,154 @@ export async function syncCouriersToDbFromServiceability({
   };
 }
 
+export async function getShiprocketOrders(params = {}) {
+  return shiprocketRequest({
+    method: "GET",
+    endpoint: "/orders",
+    params,
+  });
+}
+export async function getShiprocketOrderDetails(
+  shiprocketOrderId
+) {
+  if (!shiprocketOrderId) {
+    throw new Error(
+      "shiprocketOrderId is required"
+    );
+  }
+
+  return shiprocketRequest({
+    method: "GET",
+    endpoint: `/orders/show/${shiprocketOrderId}`,
+  });
+}
+export async function createReturnOrder(
+  payload
+) {
+  return shiprocketRequest({
+    method: "POST",
+    endpoint: "/orders/create/return",
+    data: payload,
+  });
+}
+export async function updateReturnOrder(
+  payload
+) {
+  return shiprocketRequest({
+    method: "POST",
+    endpoint: "/orders/edit",
+    data: payload,
+  });
+}
+export async function getReturnOrders(
+  params = {}
+) {
+  return shiprocketRequest({
+    method: "GET",
+    endpoint:
+      "/orders/processing/return",
+    params,
+  });
+}
+export async function createExchangeOrder(
+  payload
+) {
+  return shiprocketRequest({
+    method: "POST",
+    endpoint:
+      "/orders/create/exchange",
+    data: payload,
+  });
+} 
 /* =====================================================
    DEFAULT EXPORT
 ===================================================== */
 
 export default {
+  /* ==========================================
+     AUTH
+  ========================================== */
   getShiprocketToken,
+
+  /* ==========================================
+     ORDER CREATION
+  ========================================== */
   createShiprocketOrder,
   createShipmentForOrder,
+
+  /* ==========================================
+     SHIPROCKET ORDERS
+  ========================================== */
+  getShiprocketOrders,
+  getShiprocketOrderDetails,
+
+  /* ==========================================
+     AWB
+  ========================================== */
   generateAWB,
   assignAWBToShipment,
+
+  /* ==========================================
+     PICKUP
+  ========================================== */
   requestPickup,
   requestPickupForShipment,
+
+  /* ==========================================
+     COURIERS
+  ========================================== */
   getAvailableCouriers,
+  listActiveCouriers,
+  getCourierById,
+  syncCouriersToDbFromServiceability,
+
+  /* ==========================================
+     SERVICEABILITY
+  ========================================== */
   checkServiceability,
   checkServiceabilityAndStore,
   getDeliveryEstimateService,
+
+  /* ==========================================
+     TRACKING
+  ========================================== */
   trackShipment,
   getTrackingDetails,
   syncShipmentTracking,
+
+  /* ==========================================
+     SHIPMENTS
+  ========================================== */
   getShipmentDetails,
-  listActiveCouriers,
-  getCourierById,
-  getInvoiceUrl,
-  downloadInvoiceForShipment,
-  cancelShipment,
-  cancelShipmentForShipment,
   appendTrackingEvent,
   updateShipmentStatus,
+
+  /* ==========================================
+     INVOICES
+  ========================================== */
+  getInvoiceUrl,
+  downloadInvoiceForShipment,
+
+  /* ==========================================
+     CANCELLATION
+  ========================================== */
+  cancelShipment,
+  cancelShipmentForShipment,
+
+  /* ==========================================
+     RETURNS
+  ========================================== */
+  createReturnOrder,
+  updateReturnOrder,
+  getReturnOrders,
+
+  /* ==========================================
+     EXCHANGE
+  ========================================== */
+  createExchangeOrder,
+
+  /* ==========================================
+     WEBHOOKS
+  ========================================== */
   processShiprocketWebhook,
-  syncCouriersToDbFromServiceability,
 };
