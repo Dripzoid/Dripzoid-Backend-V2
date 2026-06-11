@@ -8,11 +8,21 @@ export async function queueOrderCreatedEvent({
   order,
   user,
 }) {
+  const dbUser = await prisma.user.findUnique({
+  where: {
+    id: user.id,
+  },
+  select: {
+    id: true,
+    name: true,
+    email: true,
+  },
+});
   const payload = {
-    customer_name: user?.name,
-    email: user?.email,
+    customer_name: dbUser?.name,
+    email: dbUser?.email,
 
-    user_id: user?.id,
+    user_id: dbUser?.id,
 
     order_id: order?.orderId,
     order_number: order?.orderNumber,
@@ -21,7 +31,7 @@ export async function queueOrderCreatedEvent({
 
     order_total: order?.totalAmount,
 
-    order_url: `${process.env.CLIENT_URL}/orders/${order?.orderId}`,
+    order_url: `${process.env.CLIENT_URL}/order-details/${order?.orderId}`,
 
     shipment_id:
       order?.shipmentId || null,
