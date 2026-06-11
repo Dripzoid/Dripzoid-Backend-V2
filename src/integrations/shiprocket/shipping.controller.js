@@ -14,7 +14,7 @@ import {
   listActiveCouriers,
   getShipmentDetails,
   processShiprocketWebhook,
-} from "../services/shipping.service.js";
+} from "./shiprocket.service.js";
 
 function parseNumber(value, fallback = null) {
   const n = Number(value);
