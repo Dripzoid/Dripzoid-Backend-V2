@@ -7,7 +7,7 @@ import {
 const router = express.Router();
 
 router.post(
-  "/shiprocket",
+  "/shipping",
   handleShiprocketWebhook
 );
 
