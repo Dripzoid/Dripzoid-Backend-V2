@@ -1205,13 +1205,19 @@ export async function syncShipmentTracking(shipmentDbId) {
    DB: SHIPMENT HELPERS
 ===================================================== */
 
-export async function getShipmentDetails(shipmentDbId) {
-  if (!shipmentDbId) {
-    throw new Error("shipmentDbId is required");
-  }
+export async function getShipmentDetails(identifier) {
+  return prisma.shipment.findFirst({
+    where: {
+      OR: [
+        {
+          id: identifier,
+        },
+        {
+          shipmentId: String(identifier),
+        },
+      ],
+    },
 
-  return prisma.shipment.findUnique({
-    where: { id: shipmentDbId },
     include: {
       order: {
         include: {
@@ -1220,6 +1226,7 @@ export async function getShipmentDetails(shipmentDbId) {
           items: true,
         },
       },
+
       trackingEvents: {
         orderBy: {
           createdAt: "desc",
