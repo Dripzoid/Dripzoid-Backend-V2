@@ -1,187 +1,120 @@
+// src/controllers/shipping.controller.js
 import {
-  generateAWB,
-  requestPickup,
+  assignAWBToShipment,
+  requestPickupForShipment,
   getAvailableCouriers,
   getTrackingDetails,
+  syncShipmentTracking,
   getInvoiceUrl,
+  downloadInvoiceForShipment,
+  cancelShipmentForShipment,
   cancelShipment,
-  checkServiceability,
+  checkServiceabilityAndStore,
   getDeliveryEstimateService,
-} from "./shiprocket.service.js";
+  listActiveCouriers,
+  getShipmentDetails,
+  processShiprocketWebhook,
+} from "../services/shipping.service.js";
 
-export async function assignAWBController(
-  req,
-  res,
-  next
-) {
+function parseNumber(value, fallback = null) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function parseBoolean(value) {
+  if (value === true || value === "true" || value === 1 || value === "1") return true;
+  return false;
+}
+
+function getShipmentDbId(req) {
+  return (
+    req.params?.shipmentDbId ||
+    req.params?.shipmentId ||
+    req.body?.shipmentDbId ||
+    req.body?.shipmentId ||
+    req.query?.shipmentDbId ||
+    req.query?.shipmentId ||
+    null
+  );
+}
+
+function getShiprocketOrderId(req) {
+  return (
+    req.params?.shiprocketOrderId ||
+    req.body?.shiprocketOrderId ||
+    req.query?.shiprocketOrderId ||
+    null
+  );
+}
+
+function getCourierId(req) {
+  return (
+    req.body?.courierId ||
+    req.body?.courier_id ||
+    req.query?.courierId ||
+    req.query?.courier_id ||
+    null
+  );
+}
+
+function getPincode(req) {
+  return (
+    req.body?.pincode ||
+    req.query?.pincode ||
+    req.params?.pincode ||
+    null
+  );
+}
+
+function courierQueryPayload(req) {
+  return {
+    pickup_postcode:
+      req.query?.pickup_postcode ||
+      process.env.WAREHOUSE_PINCODE ||
+      process.env.SHIPROCKET_PICKUP_PINCODE ||
+      "",
+    delivery_postcode:
+      req.query?.delivery_postcode ||
+      req.query?.pincode ||
+      req.body?.pincode ||
+      null,
+    cod: parseNumber(req.query?.cod, 0),
+    weight: parseNumber(req.query?.weight, 0.5),
+    length: parseNumber(req.query?.length, 10),
+    breadth: parseNumber(req.query?.breadth, 10),
+    height: parseNumber(req.query?.height, 5),
+    declared_value: parseNumber(req.query?.declared_value, 500),
+    mode: req.query?.mode || "Surface",
+  };
+}
+
+/* =====================================================
+   SHIPMENT: ASSIGN AWB
+===================================================== */
+
+export async function assignAWBController(req, res, next) {
   try {
-    const {
-      shipment_id,
-      courier_id,
-    } = req.body;
+    const shipmentDbId = getShipmentDbId(req);
+    const courierId = getCourierId(req);
 
-    if (
-      !shipment_id ||
-      !courier_id
-    ) {
+    if (!shipmentDbId) {
       return res.status(400).json({
         success: false,
-        message:
-          "shipment_id and courier_id required",
+        message: "shipmentDbId is required",
       });
     }
 
-    const response =
-      await generateAWB({
-        shipment_id,
-        courier_id,
-      });
-
-    return res.status(200).json({
-      success: true,
-      data: response,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
-
-export async function getCouriersController(
-  req,
-  res,
-  next
-) {
-  try {
-    const {
-      pincode,
-      weight = 0.5,
-      cod = 0,
-      length = 10,
-      breadth = 10,
-      height = 5,
-      declared_value = 500,
-      mode = "Surface",
-    } = req.query;
-
-    const response =
-      await getAvailableCouriers({
-        pickup_postcode:
-          process.env.WAREHOUSE_PINCODE,
-
-        delivery_postcode:
-          pincode,
-
-        weight,
-        cod,
-        length,
-        breadth,
-        height,
-        declared_value,
-        mode,
-      });
-
-    return res.status(200).json({
-      success: true,
-      data:
-        response?.data
-          ?.available_courier_companies ||
-        [],
-    });
-  } catch (error) {
-    next(error);
-  }
-}
-export async function requestPickupController(
-  req,
-  res,
-  next
-) {
-  try {
-    const { shipment_id } =
-      req.body;
-
-    if (!shipment_id) {
+    if (!courierId) {
       return res.status(400).json({
         success: false,
-        message:
-          "shipment_id required",
+        message: "courierId is required",
       });
     }
 
-    const response =
-      await requestPickup(
-        shipment_id
-      );
-
-    return res.status(200).json({
-      success: true,
-      data: response,
+    const response = await assignAWBToShipment({
+      shipmentDbId,
+      courierId: parseNumber(courierId),
     });
-  } catch (error) {
-    next(error);
-  }
-}
-
-export async function trackShipmentController(
-  req,
-  res,
-  next
-) {
-  try {
-    const {
-      shiprocketOrderId,
-    } = req.params;
-
-    const response =
-      await getTrackingDetails(
-        shiprocketOrderId
-      );
-
-    return res.status(200).json({
-      success: true,
-      data: response,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
-export async function getInvoiceController(
-  req,
-  res,
-  next
-) {
-  try {
-    const {
-      shiprocketOrderId,
-    } = req.params;
-
-    const response =
-      await getInvoiceUrl(
-        shiprocketOrderId
-      );
-
-    return res.status(200).json({
-      success: true,
-      data: response,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
-export async function cancelShipmentController(
-  req,
-  res,
-  next
-) {
-  try {
-    const {
-      shiprocketOrderId,
-    } = req.body;
-
-    const response =
-      await cancelShipment(
-        shiprocketOrderId
-      );
 
     return res.status(200).json({
       success: true,
@@ -193,361 +126,342 @@ export async function cancelShipmentController(
 }
 
 /* =====================================================
-   📦 DELIVERY ESTIMATE
+   SHIPMENT: REQUEST PICKUP
 ===================================================== */
 
-export async function getDeliveryEstimate(
-  req,
-  res,
-  next
-) {
+export async function requestPickupController(req, res, next) {
   try {
-    const { pincode } =
-      req.params;
+    const shipmentDbId = getShipmentDbId(req);
 
-    const weight =
-      Number(
-        req.query.weight
-      ) || 0.5;
-
-    const cod =
-      req.query.cod === "true"
-        ? 1
-        : 0;
-
-    const length =
-      Number(
-        req.query.length
-      ) || 10;
-
-    const breadth =
-      Number(
-        req.query.breadth
-      ) || 10;
-
-    const height =
-      Number(
-        req.query.height
-      ) || 5;
-
-    const declared_value =
-      Number(
-        req.query.declared_value
-      ) || 500;
-
-    const mode =
-      req.query.mode ||
-      "Surface";
-
-    const result =
-      await getDeliveryEstimateService(
-        pincode,
-        {
-          weight,
-          cod,
-
-          length,
-          breadth,
-          height,
-
-          declared_value,
-
-          mode,
-        }
-      );
-
-    console.log(
-      "📦 Delivery Estimate Result:",
-      JSON.stringify(
-        result,
-        null,
-        2
-      )
-    );
-
-    if (
-      !result ||
-      !result.serviceable
-    ) {
-      return res.status(404).json({
+    if (!shipmentDbId) {
+      return res.status(400).json({
         success: false,
-
-        serviceable: false,
-
-        message:
-          "Delivery unavailable",
+        message: "shipmentDbId is required",
       });
     }
 
+    const response = await requestPickupForShipment(shipmentDbId);
+
     return res.status(200).json({
       success: true,
-
-      serviceable: true,
-
-      estimated_delivery:
-        result.estimated_delivery,
-
-      fastest_courier:
-        result.fastest_courier,
-
-      cod_available:
-        result.cod_available,
-
-      courier_count:
-        result.courier_count,
-
-      couriers:
-        result.couriers,
+      data: response,
     });
   } catch (error) {
-    console.error(
-      "❌ Delivery Estimate Error:",
-      error?.response?.data ||
-        error.message ||
-        error
-    );
-
     next(error);
   }
 }
 
 /* =====================================================
-   🚚 SERVICEABILITY CHECK
+   COURIERS: SHIPROCKET SERVICEABILITY LIST
 ===================================================== */
 
-export async function checkDeliveryServiceability(
-  req,
-  res,
-  next
-) {
+export async function getCouriersController(req, res, next) {
   try {
-    const {
+    const payload = courierQueryPayload(req);
+
+    if (!payload.delivery_postcode) {
+      return res.status(400).json({
+        success: false,
+        message: "pincode or delivery_postcode is required",
+      });
+    }
+
+    const response = await getAvailableCouriers(payload);
+
+    return res.status(200).json({
+      success: true,
+      data: response?.data?.available_courier_companies || [],
+      raw: response,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/* =====================================================
+   COURIERS: ACTIVE MASTER DATA FROM DB
+===================================================== */
+
+export async function listCouriersController(req, res, next) {
+  try {
+    const couriers = await listActiveCouriers();
+
+    return res.status(200).json({
+      success: true,
+      data: couriers,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/* =====================================================
+   SERVICEABILITY: CHECK + STORE
+===================================================== */
+
+export async function checkDeliveryServiceability(req, res, next) {
+  try {
+    const pincode = getPincode(req);
+    const orderId = req.body?.orderId || req.query?.orderId || null;
+
+    const weight = parseNumber(req.body?.weight ?? req.query?.weight, 0.5);
+    const cod = parseBoolean(req.body?.cod ?? req.query?.cod) ? 1 : 0;
+    const length = parseNumber(req.body?.length ?? req.query?.length, 10);
+    const breadth = parseNumber(req.body?.breadth ?? req.query?.breadth, 10);
+    const height = parseNumber(req.body?.height ?? req.query?.height, 5);
+    const declared_value = parseNumber(
+      req.body?.declared_value ?? req.query?.declared_value,
+      500
+    );
+    const mode = req.body?.mode || req.query?.mode || "Surface";
+
+    if (!pincode && !orderId) {
+      return res.status(400).json({
+        success: false,
+        message: "pincode or orderId is required",
+      });
+    }
+
+    const result = await checkServiceabilityAndStore({
+      orderId,
       pincode,
+      weight,
+      cod,
+      length,
+      breadth,
+      height,
+      declared_value,
+      mode,
+    });
 
-      weight = 0.5,
+    return res.status(200).json({
+      success: true,
+      serviceable: result.serviceable,
+      delivery_postcode: result.delivery_postcode,
+      courier_count: result.courier_count,
+      recommended_courier: result.recommended_courier,
+      couriers: result.raw?.data?.available_courier_companies || [],
+      synced_couriers: result.couriers || [],
+    });
+  } catch (error) {
+    next(error);
+  }
+}
 
-      cod = false,
+/* =====================================================
+   DELIVERY ESTIMATE
+===================================================== */
 
-      length = 10,
-
-      breadth = 10,
-
-      height = 5,
-
-      declared_value = 500,
-
-      mode = "Surface",
-    } = req.body;
+export async function getDeliveryEstimate(req, res, next) {
+  try {
+    const pincode =
+      req.params?.pincode ||
+      req.query?.pincode ||
+      req.body?.pincode ||
+      null;
 
     if (!pincode) {
       return res.status(400).json({
         success: false,
-
-        message:
-          "Pincode required",
+        message: "pincode is required",
       });
     }
 
-    const couriers =
-      await checkServiceability(
-        pincode,
-        {
-          weight:
-            Number(weight),
-
-          cod: cod
-            ? 1
-            : 0,
-
-          length:
-            Number(length),
-
-          breadth:
-            Number(breadth),
-
-          height:
-            Number(height),
-
-          declared_value:
-            Number(
-              declared_value
-            ),
-
-          mode,
-        }
-      );
-
-    console.log(
-      "🚚 Serviceability Couriers:",
-      JSON.stringify(
-        couriers,
-        null,
-        2
-      )
-    );
-
-    if (
-      !couriers ||
-      couriers.length === 0
-    ) {
-      return res.status(404).json({
-        success: false,
-
-        serviceable: false,
-
-        message:
-          "Pincode not serviceable",
-      });
-    }
-
-    const fastest =
-      couriers.reduce(
-        (best, current) => {
-          if (!best) {
-            return current;
-          }
-
-          const currentDays =
-            Number(
-              current.estimated_delivery_days
-            ) || 999;
-
-          const bestDays =
-            Number(
-              best.estimated_delivery_days
-            ) || 999;
-
-          return currentDays <
-            bestDays
-            ? current
-            : best;
-        },
-        null
-      );
-
-    const cheapest =
-      couriers.reduce(
-        (best, current) => {
-          if (!best) {
-            return current;
-          }
-
-          const currentRate =
-            Number(
-              current.rate
-            ) || 999999;
-
-          const bestRate =
-            Number(
-              best.rate
-            ) || 999999;
-
-          return currentRate <
-            bestRate
-            ? current
-            : best;
-        },
-        null
-      );
+    const result = await getDeliveryEstimateService(pincode, {
+      weight: parseNumber(req.query?.weight, 0.5),
+      cod: parseBoolean(req.query?.cod) ? 1 : 0,
+      length: parseNumber(req.query?.length, 10),
+      breadth: parseNumber(req.query?.breadth, 10),
+      height: parseNumber(req.query?.height, 5),
+      declared_value: parseNumber(req.query?.declared_value, 500),
+      mode: req.query?.mode || "Surface",
+    });
 
     return res.status(200).json({
       success: true,
-
-      serviceable: true,
-
-      courier_count:
-        couriers.length,
-
-      cod_available:
-        couriers.some(
-          (courier) =>
-            courier.cod === 1
-        ),
-
-      fastest_courier:
-        fastest
-          ? {
-              courier_name:
-                fastest.courier_name,
-
-              etd:
-                fastest.etd,
-
-              rate:
-                fastest.rate,
-            }
-          : null,
-
-      cheapest_courier:
-        cheapest
-          ? {
-              courier_name:
-                cheapest.courier_name,
-
-              etd:
-                cheapest.etd,
-
-              rate:
-                cheapest.rate,
-            }
-          : null,
-
-      couriers:
-        couriers.map(
-          (courier) => ({
-            courier_company_id:
-              courier.courier_company_id,
-
-            courier_name:
-              courier.courier_name,
-
-            etd:
-              courier.etd ||
-              "N/A",
-
-            estimated_delivery_days:
-              courier.estimated_delivery_days,
-
-            rate:
-              courier.rate,
-
-            freight_charge:
-              courier.freight_charge,
-
-            cod:
-              courier.cod,
-
-            rating:
-              courier.rating,
-
-            realtime_tracking:
-              courier.realtime_tracking,
-
-            delivery_performance:
-              courier.delivery_performance,
-
-            pickup_performance:
-              courier.pickup_performance,
-
-            rto_performance:
-              courier.rto_performance,
-
-            is_surface:
-              courier.is_surface,
-
-            is_rto_address_available:
-              courier.is_rto_address_available,
-          })
-        ),
+      serviceable: result.serviceable,
+      estimated_delivery: result.estimated_delivery,
+      fastest_courier: result.fastest_courier,
+      cod_available: result.cod_available,
+      courier_count: result.courier_count,
+      couriers: result.couriers,
     });
   } catch (error) {
-    console.error(
-      "❌ Serviceability Error:",
-      error?.response?.data ||
-        error.message ||
-        error
-    );
-
     next(error);
   }
 }
+
+/* =====================================================
+   TRACKING: DIRECT SHIPROCKET TRACK
+===================================================== */
+
+export async function trackShipmentController(req, res, next) {
+  try {
+    const shiprocketOrderId = getShiprocketOrderId(req);
+
+    if (!shiprocketOrderId) {
+      return res.status(400).json({
+        success: false,
+        message: "shiprocketOrderId is required",
+      });
+    }
+
+    const response = await getTrackingDetails(shiprocketOrderId);
+
+    return res.status(200).json({
+      success: true,
+      data: response,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/* =====================================================
+   TRACKING: SYNC SHIPMENT INTO DB
+===================================================== */
+
+export async function syncShipmentTrackingController(req, res, next) {
+  try {
+    const shipmentDbId = getShipmentDbId(req);
+
+    if (!shipmentDbId) {
+      return res.status(400).json({
+        success: false,
+        message: "shipmentDbId is required",
+      });
+    }
+
+    const response = await syncShipmentTracking(shipmentDbId);
+
+    return res.status(200).json({
+      success: true,
+      data: response,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/* =====================================================
+   SHIPMENT DETAILS
+===================================================== */
+
+export async function getShipmentController(req, res, next) {
+  try {
+    const shipmentDbId = getShipmentDbId(req);
+
+    if (!shipmentDbId) {
+      return res.status(400).json({
+        success: false,
+        message: "shipmentDbId is required",
+      });
+    }
+
+    const shipment = await getShipmentDetails(shipmentDbId);
+
+    if (!shipment) {
+      return res.status(404).json({
+        success: false,
+        message: "Shipment not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: shipment,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/* =====================================================
+   INVOICE: SHIPMENT-FIRST
+===================================================== */
+
+export async function getInvoiceController(req, res, next) {
+  try {
+    const shipmentDbId = getShipmentDbId(req);
+    const shiprocketOrderId = getShiprocketOrderId(req);
+
+    let response;
+
+    if (shipmentDbId) {
+      response = await downloadInvoiceForShipment(shipmentDbId);
+    } else if (shiprocketOrderId) {
+      response = await getInvoiceUrl(shiprocketOrderId);
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "shipmentDbId or shiprocketOrderId is required",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: response,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/* =====================================================
+   CANCEL SHIPMENT
+===================================================== */
+
+export async function cancelShipmentController(req, res, next) {
+  try {
+    const shipmentDbId = getShipmentDbId(req);
+    const shiprocketOrderId = getShiprocketOrderId(req);
+
+    let response;
+
+    if (shipmentDbId) {
+      response = await cancelShipmentForShipment(shipmentDbId);
+    } else if (shiprocketOrderId) {
+      response = await cancelShipment(shiprocketOrderId);
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "shipmentDbId or shiprocketOrderId is required",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: response,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/* =====================================================
+   SHIPROCKET WEBHOOK
+===================================================== */
+
+export async function processShiprocketWebhookController(req, res, next) {
+  try {
+    const response = await processShiprocketWebhook(req.body);
+
+    return res.status(200).json({
+      success: true,
+      data: response,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/* =====================================================
+   OPTIONAL COMPAT WRAPPERS
+   Keep these only if your routes already point to old names.
+===================================================== */
+
+export const getAvailableCouriersController = getCouriersController;
+export const checkServiceabilityController = checkDeliveryServiceability;
+export const downloadInvoiceController = getInvoiceController;
+export const syncTrackingController = syncShipmentTrackingController;
+export const getShipmentDetailsController = getShipmentController;
