@@ -77,7 +77,7 @@ model User {
 
   name     String?
   email    String  @unique
-  phone    String? 
+  phone    String?
   password String
 
   gender String?
@@ -1200,6 +1200,19 @@ model ServiceabilityCheck {
   rating Float?
 
   isRecommended Boolean @default(false)
+
+  createdAt DateTime @default(now())
+}
+
+model ShipmentWebhookEvent {
+  id String @id @default(uuid())
+
+  shipmentId        String?
+  shiprocketOrderId String?
+
+  status String?
+
+  payload Json
 
   createdAt DateTime @default(now())
 }
