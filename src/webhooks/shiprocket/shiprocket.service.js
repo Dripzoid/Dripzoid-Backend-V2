@@ -2,95 +2,174 @@
 
 import prisma from "../../lib/prisma.js";
 
+import prisma from "../../lib/prisma.js";
+
 import {
-  updateOrderShipmentStatusService,
-} from "../../modules/orders/order.service.js";
+  updateShipmentStatus,
+  isOrderTerminalStatus,
+} from "../../integrations/shiprocket/shiprocket.service.js";
 
-const STATUS_MAPPING = {
-  "PICKED UP": "Packed",
 
-  SHIPPED: "Shipped",
+export async function processShiprocketWebhook(payload) {
+  if (!payload) {
+    throw new Error("Webhook payload is required");
+  }
 
-  "IN TRANSIT": "In Transit",
+  const shipmentRefId =
+    payload?.shipment_id ||
+    payload?.shipmentId ||
+    payload?.shipmentID;
 
-  "OUT FOR DELIVERY":
-    "Out For Delivery",
+  const shiprocketOrderId =
+    payload?.order_id ||
+    payload?.orderId ||
+    payload?.shiprocket_order_id ||
+    payload?.shiprocketOrderId;
 
-  DELIVERED: "Delivered",
+  const rawStatus =
+    payload?.status ||
+    payload?.current_status ||
+    payload?.shipment_status ||
+    payload?.event_status ||
+    payload?.tracking_status;
 
-  "RTO INITIATED":
-    "RTO Initiated",
+  const webhookEvent =
+    await prisma.shipmentWebhookEvent.create({
+      data: {
+        shipmentId: shipmentRefId
+          ? String(shipmentRefId)
+          : null,
 
-  "RTO IN TRANSIT":
-    "RTO In Transit",
-
-  "RTO DELIVERED":
-    "RTO Delivered",
-
-  CANCELLED: "Cancelled",
-};
-
-export async function processShiprocketWebhook(
-  payload
-) {
-  console.log(
-    "Shiprocket Webhook:",
-    JSON.stringify(
-      payload,
-      null,
-      2
-    )
-  );
-
-  const {
-    order_id,
-    shipment_status,
-    awb,
-    courier_name,
-  } = payload;
-
-  const order =
-    await prisma.order.findFirst({
-      where: {
         shiprocketOrderId:
-          String(order_id),
+          shiprocketOrderId
+            ? String(shiprocketOrderId)
+            : null,
+
+        status: rawStatus
+          ? String(rawStatus)
+          : null,
+
+        payload,
       },
     });
 
-  if (!order) {
-    throw new Error(
-      `Order not found for Shiprocket Order ID: ${order_id}`
-    );
+  let shipment = null;
+
+  if (shipmentRefId) {
+    shipment =
+      await prisma.shipment.findUnique({
+        where: {
+          shipmentId:
+            String(shipmentRefId),
+        },
+      });
   }
 
-  const mappedStatus =
-    STATUS_MAPPING[
-      shipment_status
-    ] || shipment_status;
+  if (
+    !shipment &&
+    shiprocketOrderId
+  ) {
+    shipment =
+      await prisma.shipment.findFirst({
+        where: {
+          shiprocketOrderId:
+            String(shiprocketOrderId),
+        },
+        include: {
+          order: true,
+        },
+      });
+  }
 
-  const updatedOrder =
-    await updateOrderShipmentStatusService({
-      orderId: order.id,
+  if (!shipment) {
+    return {
+      success: false,
+      reason:
+        "Shipment not found",
+      webhookEventId:
+        webhookEvent.id,
+    };
+  }
+
+  const order =
+    shipment.order ||
+    (await prisma.order.findUnique({
+      where: {
+        id: shipment.orderId,
+      },
+    }));
+
+  if (
+    order &&
+    isOrderTerminalStatus(
+      order.status
+    )
+  ) {
+    return {
+      success: true,
+      skipped: true,
+      reason:
+        `Order already in terminal state: ${order.status}`,
+      webhookEventId:
+        webhookEvent.id,
+    };
+  }
+
+  const updatedShipment =
+    await updateShipmentStatus({
+      shipmentDbId:
+        shipment.id,
 
       shipmentStatus:
-        mappedStatus,
+        rawStatus,
 
-      awbCode:
-        awb ||
-        order.awbCode,
+      activity:
+        payload?.activity ||
+        payload?.note ||
+        payload?.details ||
+        rawStatus,
+
+      location:
+        payload?.location ||
+        payload?.city ||
+        payload?.hub_name,
+
+      scanTimestamp:
+        payload?.scan_timestamp ||
+        payload?.scanTimestamp ||
+        payload?.date,
+
+      courierId:
+        payload?.courier_company_id ||
+        payload?.courier_id,
 
       courierName:
-        courier_name ||
-        order.courierName,
+        payload?.courier_name,
+
+      awbCode:
+        payload?.awb_code,
+
+      pickupTokenNumber:
+        payload?.pickup_token_number,
     });
+
+  await prisma.shipmentWebhookEvent.update({
+    where: {
+      id: webhookEvent.id,
+    },
+    data: {
+      processed: true,
+      processedAt: new Date(),
+    },
+  });
 
   return {
     success: true,
-
+    shipment:
+      updatedShipment,
     orderId:
-      updatedOrder.id,
-
-    shipmentStatus:
-      updatedOrder.shipmentStatus,
+      shipment.orderId,
+    webhookEventId:
+      webhookEvent.id,
   };
 }
