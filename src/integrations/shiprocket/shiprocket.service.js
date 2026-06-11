@@ -33,20 +33,6 @@ const TERMINAL_SHIPMENT_STATUSES = new Set([
   "RTO Delivered",
 ]);
 
-const SHIPMENT_TO_ORDER_STATUS_MAP = {
-  Confirmed: "Confirmed",
-  Packed: "Packed",
-  "Pickup Scheduled": "Packed",
-  Shipped: "Shipped",
-  "Out For Delivery": "Out For Delivery",
-  Delivered: "Delivered",
-  Cancelled: "Cancelled",
-  "RTO Initiated": "Returned",
-  "RTO Delivered": "Returned",
-  Returned: "Returned",
-  NDR: "NDR",
-};
-
 /* =====================================================
    TOKEN CACHE
 ===================================================== */
@@ -182,9 +168,10 @@ function normalizeShiprocketStatus(rawStatus) {
   return SHIPROCKET_STATUS_MAP[normalizedKey] || String(rawStatus).trim();
 }
 
-function getOrderStatusFromShipmentStatus(shipmentStatus) {
-  if (!shipmentStatus) return null;
-  return SHIPMENT_TO_ORDER_STATUS_MAP[shipmentStatus] || shipmentStatus;
+function isOrderTerminalStatus(status) {
+  return ["Cancelled", "RefundInitiated", "RefundProcessed", "Returned"].includes(
+    status
+  );
 }
 
 function getShipmentExternalId(shipment) {
@@ -429,18 +416,6 @@ async function emitOrderEvent(eventName, payload) {
   return { eventName, payload };
 }
 
-async function syncOrderStatus(orderId, shipmentStatus, db = prisma) {
-  if (!orderId || !shipmentStatus) return null;
-
-  const nextOrderStatus = getOrderStatusFromShipmentStatus(shipmentStatus);
-  if (!nextOrderStatus) return null;
-
-  return db.order.update({
-    where: { id: orderId },
-    data: { status: nextOrderStatus },
-  });
-}
-
 async function appendTrackingEventWithClient(
   db,
   {
@@ -489,7 +464,6 @@ async function updateShipmentStatusWithClient(
   {
     shipmentDbId,
     shipmentStatus,
-    orderStatus = null,
     activity = null,
     location = null,
     scanTimestamp = null,
@@ -516,9 +490,6 @@ async function updateShipmentStatusWithClient(
     ? normalizeShiprocketStatus(shipmentStatus)
     : shipment.shipmentStatus;
 
-  const nextOrderStatus =
-    orderStatus || getOrderStatusFromShipmentStatus(nextShipmentStatus);
-
   const updatedShipment = await db.shipment.update({
     where: { id: shipmentDbId },
     data: {
@@ -535,13 +506,6 @@ async function updateShipmentStatusWithClient(
     },
   });
 
-  if (nextOrderStatus) {
-    await db.order.update({
-      where: { id: shipment.orderId },
-      data: { status: nextOrderStatus },
-    });
-  }
-
   if (nextShipmentStatus || activity || location || scanTimestamp) {
     await appendTrackingEventWithClient(db, {
       shipmentDbId,
@@ -556,7 +520,6 @@ async function updateShipmentStatusWithClient(
     shipmentDbId,
     orderId: shipment.orderId,
     shipmentStatus: nextShipmentStatus,
-    orderStatus: nextOrderStatus,
   });
 
   return updatedShipment;
@@ -707,29 +670,17 @@ export async function assignAWBToShipment({ shipmentDbId, courierId }) {
         awbCode: awbCode || shipment.awbCode,
         courierId: chosenCourierId,
         courierName: courierRecord?.name || shipment.courierName || null,
-        shipmentStatus: getMutableShipmentStatus(
-          shipment.shipmentStatus,
-          normalizeShiprocketStatus("SHIPPED")
-        ),
+        shipmentStatus: shipment.shipmentStatus,
         assignedAt: new Date(),
       },
     });
 
     await appendTrackingEventWithClient(tx, {
       shipmentDbId,
-      status: normalizeShiprocketStatus("SHIPPED"),
+      status: "AWB Assigned",
       activity: awbCode ? `AWB generated: ${awbCode}` : "AWB generated",
       location: "System",
       scanTimestamp: new Date(),
-    });
-
-    await tx.order.update({
-      where: { id: shipment.orderId },
-      data: {
-        status: getOrderStatusFromShipmentStatus(
-          normalizeShiprocketStatus("SHIPPED")
-        ),
-      },
     });
 
     return next;
@@ -810,15 +761,6 @@ export async function requestPickupForShipment(shipmentDbId) {
       activity: "Pickup requested",
       location: "System",
       scanTimestamp: new Date(),
-    });
-
-    await tx.order.update({
-      where: { id: shipment.orderId },
-      data: {
-        status: getOrderStatusFromShipmentStatus(
-          normalizeShiprocketStatus("PICKUP_GENERATED")
-        ),
-      },
     });
 
     return next;
@@ -1248,12 +1190,6 @@ export async function syncShipmentTracking(shipmentDbId) {
           shipmentStatus: normalizedShipmentStatus || shipment.shipmentStatus,
         },
       });
-
-      await syncOrderStatus(
-        shipment.orderId,
-        normalizedShipmentStatus,
-        tx
-      );
     }
   });
 
@@ -1387,9 +1323,7 @@ export async function cancelShipmentForShipment(shipmentDbId) {
     await tx.order.update({
       where: { id: shipment.orderId },
       data: {
-        status: getOrderStatusFromShipmentStatus(
-          normalizeShiprocketStatus("CANCELED")
-        ),
+        status: normalizeShiprocketStatus("CANCELED"),
       },
     });
 
@@ -1428,7 +1362,6 @@ export async function appendTrackingEvent({
 export async function updateShipmentStatus({
   shipmentDbId,
   shipmentStatus,
-  orderStatus = null,
   activity = null,
   location = null,
   scanTimestamp = null,
@@ -1444,7 +1377,6 @@ export async function updateShipmentStatus({
     return updateShipmentStatusWithClient(tx, {
       shipmentDbId,
       shipmentStatus,
-      orderStatus,
       activity,
       location,
       scanTimestamp,
@@ -1481,30 +1413,6 @@ export async function processShiprocketWebhook(payload) {
     payload?.shiprocketOrderId
   );
 
-  const shipmentIdString = shipmentRefId ? String(shipmentRefId) : null;
-  const orderIdString = shiprocketOrderId ? String(shiprocketOrderId) : null;
-
-  let shipment = null;
-
-  if (shipmentIdString) {
-    shipment = await prisma.shipment.findUnique({
-      where: { shipmentId: shipmentIdString },
-    });
-  }
-
-  if (!shipment && orderIdString) {
-    shipment = await prisma.shipment.findFirst({
-      where: { shiprocketOrderId: orderIdString },
-    });
-  }
-
-  if (!shipment) {
-    return {
-      success: false,
-      reason: "Shipment not found",
-    };
-  }
-
   const rawShipmentStatus = pickFirst(
     payload?.status,
     payload?.current_status,
@@ -1513,7 +1421,75 @@ export async function processShiprocketWebhook(payload) {
     payload?.tracking_status
   );
 
-  const shipmentStatus = normalizeShiprocketStatus(rawShipmentStatus);
+  const webhookEvent =
+    await prisma.shipmentWebhookEvent.create({
+      data: {
+        shipmentId: shipmentRefId
+          ? String(shipmentRefId)
+          : null,
+
+        shiprocketOrderId:
+          shiprocketOrderId
+            ? String(shiprocketOrderId)
+            : null,
+
+        status: rawShipmentStatus
+          ? String(rawShipmentStatus)
+          : null,
+
+        payload,
+      },
+    });
+
+  const shipmentIdString =
+    shipmentRefId
+      ? String(shipmentRefId)
+      : null;
+
+  const orderIdString =
+    shiprocketOrderId
+      ? String(shiprocketOrderId)
+      : null;
+
+  let shipment = null;
+
+  if (shipmentIdString) {
+    shipment =
+      await prisma.shipment.findUnique({
+        where: {
+          shipmentId:
+            shipmentIdString,
+        },
+      });
+  }
+
+  if (
+    !shipment &&
+    orderIdString
+  ) {
+    shipment =
+      await prisma.shipment.findFirst({
+        where: {
+          shiprocketOrderId:
+            orderIdString,
+        },
+      });
+  }
+
+  if (!shipment) {
+    return {
+      success: false,
+      reason:
+        "Shipment not found",
+      webhookEventId:
+        webhookEvent.id,
+    };
+  }
+
+  const shipmentStatus =
+    normalizeShiprocketStatus(
+      rawShipmentStatus
+    );
 
   const activity = pickFirst(
     payload?.activity,
@@ -1532,13 +1508,14 @@ export async function processShiprocketWebhook(payload) {
     payload?.destination
   );
 
-  const scanTimestamp = pickFirst(
-    payload?.scan_timestamp,
-    payload?.scanTimestamp,
-    payload?.date,
-    payload?.created_at,
-    payload?.updated_at
-  );
+  const scanTimestamp =
+    pickFirst(
+      payload?.scan_timestamp,
+      payload?.scanTimestamp,
+      payload?.date,
+      payload?.created_at,
+      payload?.updated_at
+    );
 
   const awbCode = pickFirst(
     payload?.awb_code,
@@ -1553,52 +1530,92 @@ export async function processShiprocketWebhook(payload) {
     )
   );
 
-  const courierName = pickFirst(
-    payload?.courier_name,
-    payload?.courierName
+  const courierName =
+    pickFirst(
+      payload?.courier_name,
+      payload?.courierName
+    );
+
+  const pickupTokenNumber =
+    pickFirst(
+      payload?.pickup_token_number,
+      payload?.pickupTokenNumber,
+      payload?.pickup_token,
+      payload?.pickupToken
+    );
+
+  const updatedShipment =
+    await updateShipmentStatus({
+      shipmentDbId:
+        shipment.id,
+
+      shipmentStatus:
+        shipmentStatus ||
+        shipment.shipmentStatus,
+
+      activity:
+        activity ||
+        "Webhook update",
+
+      location,
+
+      scanTimestamp,
+
+      courierId:
+        courierId ||
+        undefined,
+
+      courierName:
+        courierName ||
+        undefined,
+
+      awbCode:
+        awbCode ||
+        undefined,
+
+      pickupTokenNumber:
+        pickupTokenNumber ||
+        undefined,
+
+      assignedAt:
+        shipment.assignedAt ||
+        undefined,
+
+      shiprocketOrderId:
+        orderIdString ||
+        undefined,
+
+      shipmentId:
+        shipmentIdString ||
+        undefined,
+    });
+
+  await emitOrderEvent(
+    "shiprocket.webhook.processed",
+    {
+      shipmentDbId:
+        shipment.id,
+
+      orderId:
+        shipment.orderId,
+
+      shipmentStatus,
+
+      rawPayload:
+        payload,
+    }
   );
-
-  const pickupTokenNumber = pickFirst(
-    payload?.pickup_token_number,
-    payload?.pickupTokenNumber,
-    payload?.pickup_token,
-    payload?.pickupToken
-  );
-
-  const updatedShipment = await updateShipmentStatus({
-    shipmentDbId: shipment.id,
-    shipmentStatus: shipmentStatus || shipment.shipmentStatus,
-    orderStatus: getOrderStatusFromShipmentStatus(shipmentStatus),orderStatus:
-  getOrderStatusFromShipmentStatus(
-    shipmentStatus ||
-    shipment.shipmentStatus
-  ),
-    activity: activity || "Webhook update",
-    location,
-    scanTimestamp,
-    courierId: courierId || undefined,
-    courierName: courierName || undefined,
-    awbCode: awbCode || undefined,
-    pickupTokenNumber: pickupTokenNumber || undefined,
-    assignedAt: shipment.assignedAt || undefined,
-    shiprocketOrderId: orderIdString || undefined,
-    shipmentId: shipmentIdString || undefined,
-  });
-
-  await emitOrderEvent("shiprocket.webhook.processed", {
-    shipmentDbId: shipment.id,
-    orderId: shipment.orderId,
-    shipmentStatus,
-    rawPayload: payload,
-  });
 
   return {
     success: true,
-    shipment: updatedShipment,
-    orderId: shipment.orderId,
+    shipment:
+      updatedShipment,
+    orderId:
+      shipment.orderId,
+    webhookEventId:
+      webhookEvent.id,
   };
 }
-
 /* =====================================================
    OPTIONAL: SYNC SHIPROCKET COURIERS INTO DB
 ===================================================== */
@@ -1649,13 +1666,10 @@ export async function getShiprocketOrders(params = {}) {
     params,
   });
 }
-export async function getShiprocketOrderDetails(
-  shiprocketOrderId
-) {
+
+export async function getShiprocketOrderDetails(shiprocketOrderId) {
   if (!shiprocketOrderId) {
-    throw new Error(
-      "shiprocketOrderId is required"
-    );
+    throw new Error("shiprocketOrderId is required");
   }
 
   return shiprocketRequest({
@@ -1663,44 +1677,39 @@ export async function getShiprocketOrderDetails(
     endpoint: `/orders/show/${shiprocketOrderId}`,
   });
 }
-export async function createReturnOrder(
-  payload
-) {
+
+export async function createReturnOrder(payload) {
   return shiprocketRequest({
     method: "POST",
     endpoint: "/orders/create/return",
     data: payload,
   });
 }
-export async function updateReturnOrder(
-  payload
-) {
+
+export async function updateReturnOrder(payload) {
   return shiprocketRequest({
     method: "POST",
     endpoint: "/orders/edit",
     data: payload,
   });
 }
-export async function getReturnOrders(
-  params = {}
-) {
+
+export async function getReturnOrders(params = {}) {
   return shiprocketRequest({
     method: "GET",
-    endpoint:
-      "/orders/processing/return",
+    endpoint: "/orders/processing/return",
     params,
   });
 }
-export async function createExchangeOrder(
-  payload
-) {
+
+export async function createExchangeOrder(payload) {
   return shiprocketRequest({
     method: "POST",
-    endpoint:
-      "/orders/create/exchange",
+    endpoint: "/orders/create/exchange",
     data: payload,
   });
-} 
+}
+
 /* =====================================================
    DEFAULT EXPORT
 ===================================================== */
@@ -1763,6 +1772,7 @@ export default {
   getShipmentDetails,
   appendTrackingEvent,
   updateShipmentStatus,
+  isOrderTerminalStatus,
 
   /* ==========================================
      INVOICES
