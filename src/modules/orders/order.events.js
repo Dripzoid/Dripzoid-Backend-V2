@@ -1,4 +1,4 @@
-import prisma from "../../config/prisma.js";
+import prisma from "../../lib/prisma.js";
 
 import { triggerAutomationEvent } from "../../integrations/automation/automation.service.js";
 
