@@ -21,7 +21,7 @@ export async function queueOrderCreatedEvent({
 
     order_total: order.totalAmount,
 
-    order_url: `${process.env.FRONTEND_URL}/orders/${order.orderId}`,
+    order_url: `${process.env.CLIENT_URL}/orders/${order.orderId}`,
 
     shipment_id: order.shipmentId || null,
     shiprocket_order_id:
