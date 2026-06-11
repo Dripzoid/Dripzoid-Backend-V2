@@ -8,6 +8,119 @@ import {
   downloadInvoiceService,
 } from "./userOrders.service.js";
 
+import prisma from "../../lib/prisma.js";
+
+import { triggerAutomationEvent } from "../../integrations/automation/automation.service.js";
+
+import { EVENT_TYPES } from "../../config/eventTypes.js";
+
+async function queueOrderCancelledEvent({
+  order,
+  userId,
+}) {
+  try {
+    const user =
+      await prisma.user.findUnique({
+        where: {
+          id: userId,
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      });
+
+    if (!user) {
+      throw new Error(
+        `User not found: ${userId}`
+      );
+    }
+
+    const payload = {
+      customer_name:
+        user.name || "Customer",
+
+      email: user.email,
+
+      user_id: user.id,
+
+      order_id: order.id,
+
+      order_number:
+        order.orderNumber,
+
+      cancellation_date:
+        new Date().toISOString(),
+
+      payment_method:
+        order.paymentMethod ||
+
+        "N/A",
+
+      order_url: `${process.env.CLIENT_URL}/order-details/${order.id}`,
+    };
+
+    console.log(
+      "🚀 Triggering ORDER_CANCELLED automation..."
+    );
+
+    console.log(
+      JSON.stringify(
+        payload,
+        null,
+        2
+      )
+    );
+
+    await triggerAutomationEvent(
+      EVENT_TYPES.ORDER_CANCELLED,
+      payload
+    );
+
+    console.log(
+      "✅ ORDER_CANCELLED automation triggered"
+    );
+  } catch (error) {
+    console.error(
+      "❌ ORDER_CANCELLED automation failed:",
+      error.message
+    );
+
+    try {
+      await prisma.scheduledTask.create({
+        data: {
+          taskType:
+            "RETRY_AUTOMATION_EVENT",
+
+          payload: {
+            eventType:
+              EVENT_TYPES.ORDER_CANCELLED,
+
+            payload: {
+              orderId: order.id,
+              userId,
+            },
+          },
+
+          executeAt: new Date(
+            Date.now() +
+              5 * 60 * 1000
+          ),
+
+          lastError:
+            error.message,
+        },
+      });
+    } catch (scheduleError) {
+      console.error(
+        "Failed to create retry task:",
+        scheduleError.message
+      );
+    }
+  }
+}
+
 /* =====================================================
    📦 GET ALL USER ORDERS
 ===================================================== */
@@ -104,10 +217,16 @@ export const getOrder =
 export const cancelOrder =
   async (req, res) => {
     try {
-      await cancelOrderService(
-        req.user.id,
-        req.params.id
-      );
+      const cancelledOrder =
+  await cancelOrderService(
+    req.user.id,
+    req.params.id
+  );
+
+await queueOrderCancelledEvent({
+  order: cancelledOrder,
+  userId: req.user.id,
+});
 
       return res.json({
         success: true,
