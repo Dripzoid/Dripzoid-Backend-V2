@@ -31,7 +31,7 @@ import schedulerRoutes from "../integrations/automation/scheduler/scheduler.rout
 import askdripRoutes from "../modules/askdrip/askdrip.routes.js";
 import semanticRoutes from "../modules/semantic-search/semantic.routes.js";
 import vectorRoutes from "../modules/vectors/vector.routes.js";
-import shiprocketWebhookRoutes from "../webhooks/shiprocket/shiprocket.routes.js";
+import WebhookRoutes from "../webhooks/shiprocket/shiprocket.routes.js";
 
 const router = express.Router();
 
@@ -135,7 +135,7 @@ router.use(
 );
 router.use(
   "/webhooks",
-  shiprocketWebhookRoutes
+  WebhookRoutes
 );
 
 
