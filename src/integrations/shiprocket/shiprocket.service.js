@@ -1573,9 +1573,4 @@ export default {
      EXCHANGE
   ========================================== */
   createExchangeOrder,
-
-  /* ==========================================
-     WEBHOOKS
-  ========================================== */
-  processShiprocketWebhook,
 };
