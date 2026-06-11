@@ -1,27 +1,40 @@
 export const SHIPROCKET_STATUS_MAP = {
+  // Order created in Shiprocket
   NEW: "Confirmed",
 
-  PICKUP_GENERATED:
-    "Packed",
+  // Pickup requested/generated
+  PICKUP_GENERATED: "Packed",
 
-  SHIPPED:
-    "Shipped",
+  // Optional internal status
+  AWB_ASSIGNED: "AWB Assigned",
 
-  OUT_FOR_DELIVERY:
-    "Out For Delivery",
+  // Shipment lifecycle
+  SHIPPED: "Shipped",
 
-  DELIVERED:
-    "Delivered",
+  IN_TRANSIT: "In Transit",
 
-  RTO_INITIATED:
-    "RTO Initiated",
+  OUT_FOR_DELIVERY: "Out For Delivery",
 
-  RTO_DELIVERED:
-    "RTO Delivered",
+  DELIVERED: "Delivered",
 
-  CANCELED:
-    "Cancelled",
+  // RTO lifecycle
+  RTO_INITIATED: "RTO Initiated",
 
-  NDR:
-    "NDR",
+  RTO_IN_TRANSIT: "RTO In Transit",
+
+  RTO_DELIVERED: "RTO Delivered",
+
+  // Cancellation
+  CANCELED: "Cancelled",
+  CANCELLED: "Cancelled",
+
+  // NDR
+  NDR: "NDR",
+
+  // Return lifecycle (future)
+  RETURN_REQUESTED: "Return Requested",
+
+  RETURN_PICKED: "Return Picked",
+
+  RETURN_DELIVERED: "Return Delivered",
 };
