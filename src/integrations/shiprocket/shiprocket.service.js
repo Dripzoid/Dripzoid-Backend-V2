@@ -817,10 +817,27 @@ export async function createShipmentForOrder(orderId, shiprocketPayload) {
   };
 }
 
-export async function findShipment(identifier, include = {}) {
-  return prisma.shipment.findFirst({
+export async function findShipment(
+  identifier,
+  include = {}
+) {
+  const value = String(identifier);
+
+  const shipmentByShipmentId =
+    await prisma.shipment.findUnique({
+      where: {
+        shipmentId: value,
+      },
+      include,
+    });
+
+  if (shipmentByShipmentId) {
+    return shipmentByShipmentId;
+  }
+
+  return prisma.shipment.findUnique({
     where: {
-      OR: [{ id: String(identifier) }, { shipmentId: String(identifier) }],
+      id: value,
     },
     include,
   });
