@@ -33,3 +33,13 @@ export async function updateAutomationEvent(
     data,
   });
 }
+
+export async function getAutomationEventById(
+  eventId
+) {
+  return prisma.automationEvent.findUnique({
+    where: {
+      id: eventId,
+    },
+  });
+}
