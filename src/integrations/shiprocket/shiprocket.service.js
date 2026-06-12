@@ -1,10 +1,19 @@
 // src/services/shipping.service.js
 import axios from "axios";
 import { PrismaClient } from "@prisma/client";
-import { SHIPROCKET_STATUS_MAP,SHIPMENT_TO_ORDER_STATUS, } from "./shiprocket.constants.js";
-import { cancelOrderService } from "../../modules/orders/order.service.js";
-import { triggerAutomationEvent } from "../automation/automation.service.js";
-import { EVENT_TYPES } from "../../config/eventTypes.js";
+import {
+  SHIPROCKET_STATUS_MAP,
+  SHIPMENT_TO_ORDER_STATUS,
+} from "./shiprocket.constants.js";
+import { cancelOrderService } from "./order.service.js";
+import {
+  queueOrderPackedEvent,
+  queueOrderShippedEvent,
+  queueOrderOutForDeliveryEvent,
+  queueOrderDeliveredEvent,
+  queueOrderCancelledEvent,
+  queueOrderReturnedEvent,
+} from "../automation/automation.services.js";
 
 /**
  * If your project already exports a shared prisma client,
@@ -36,6 +45,20 @@ const TERMINAL_SHIPMENT_STATUSES = new Set([
   "RTO Delivered",
 ]);
 
+const SHIPPED_AUTOMATION_STATUSES = new Set(["Shipped", "In Transit"]);
+const OUT_FOR_DELIVERY_AUTOMATION_STATUSES = new Set(["Out For Delivery"]);
+const DELIVERED_AUTOMATION_STATUSES = new Set(["Delivered"]);
+const CANCELLED_AUTOMATION_STATUSES = new Set(["Cancelled"]);
+const RETURNED_AUTOMATION_STATUSES = new Set([
+  "RTO Initiated",
+  "RTO In Transit",
+  "RTO Delivered",
+  "Return Requested",
+  "Return Picked",
+  "Return Delivered",
+  "Returned",
+]);
+
 /* =====================================================
    TOKEN CACHE
 ===================================================== */
@@ -58,7 +81,7 @@ async function generateToken() {
   );
 
   cachedToken = response.data?.token || null;
-  tokenExpiry = Date.now() + 9 * 24 * 60 * 60 * 1000; // ~9 days
+  tokenExpiry = Date.now() + 9 * 24 * 60 * 60 * 1000;
 
   if (!cachedToken) {
     throw new Error("Shiprocket token not returned");
@@ -152,12 +175,9 @@ function buildTrackingEventKey(event) {
   const ts = event?.scanTimestamp
     ? new Date(event.scanTimestamp).toISOString()
     : "";
-  return [
-    event?.status || "",
-    event?.activity || "",
-    event?.location || "",
-    ts,
-  ].join("|");
+  return [event?.status || "", event?.activity || "", event?.location || "", ts].join(
+    "|"
+  );
 }
 
 function normalizeShiprocketStatus(rawStatus) {
@@ -177,6 +197,10 @@ export function isOrderTerminalStatus(status) {
   );
 }
 
+function isRtoShipmentStatus(status) {
+  return ["RTO Initiated", "RTO In Transit", "RTO Delivered"].includes(status);
+}
+
 function getShipmentExternalId(shipment) {
   const shipmentId = asString(shipment?.shipmentId);
   if (!shipmentId) {
@@ -193,7 +217,48 @@ function getTrackingId(shipment) {
   return trackingId;
 }
 
-function extractShiprocketIds(response) {
+function buildClientUrl(path) {
+  const base = (process.env.CLIENT_URL || "").replace(/\/$/, "");
+  const suffix = path.startsWith("/") ? path : `/${path}`;
+  return base ? `${base}${suffix}` : suffix;
+}
+
+function getOrderDetailsUrl(shipment) {
+  if (!shipment?.orderId) return null;
+  return buildClientUrl(`/order-details/${shipment.orderId}`);
+}
+
+function getTrackingUrl(shipment) {
+  if (!shipment?.orderId) return null;
+  return buildClientUrl(`/track-order/${shipment.orderId}`);
+}
+
+function buildOrderAutomationBase(shipment) {
+  return {
+    customer_name: shipment?.order?.user?.name || null,
+    email: shipment?.order?.user?.email || null,
+    user_id: shipment?.order?.userId || null,
+    order_id: shipment?.orderId || null,
+    order_number: shipment?.order?.orderNumber || null,
+    order_url: getOrderDetailsUrl(shipment),
+  };
+}
+
+function shouldFireAutomation(previousStatus, nextStatus, statusesSet) {
+  if (!nextStatus) return false;
+  if (!statusesSet.has(nextStatus)) return false;
+  return !statusesSet.has(previousStatus);
+}
+
+async function safeQueueAutomation(queueFn, payload, label) {
+  try {
+    await queueFn(payload);
+  } catch (error) {
+    console.error(`❌ ${label} automation failed:`, error?.message || error);
+  }
+}
+
+function extractShiprocketIds(response = {}) {
   return {
     shiprocketOrderId: asString(
       pickFirst(
@@ -202,7 +267,9 @@ function extractShiprocketIds(response) {
         response?.data?.order_id,
         response?.data?.orderId,
         response?.payload?.order_id,
-        response?.payload?.orderId
+        response?.payload?.orderId,
+        response?.response?.data?.order_id,
+        response?.response?.data?.orderId
       )
     ),
     shipmentId: asString(
@@ -212,7 +279,9 @@ function extractShiprocketIds(response) {
         response?.data?.shipment_id,
         response?.data?.shipmentId,
         response?.payload?.shipment_id,
-        response?.payload?.shipmentId
+        response?.payload?.shipmentId,
+        response?.response?.data?.shipment_id,
+        response?.response?.data?.shipmentId
       )
     ),
     awbCode: asString(
@@ -222,7 +291,9 @@ function extractShiprocketIds(response) {
         response?.data?.awb_code,
         response?.data?.awbCode,
         response?.result?.awb_code,
-        response?.result?.awbCode
+        response?.result?.awbCode,
+        response?.response?.data?.awb_code,
+        response?.response?.data?.awbCode
       )
     ),
     pickupTokenNumber: asString(
@@ -230,7 +301,9 @@ function extractShiprocketIds(response) {
         response?.pickup_token_number,
         response?.pickupTokenNumber,
         response?.data?.pickup_token_number,
-        response?.data?.pickupTokenNumber
+        response?.data?.pickupTokenNumber,
+        response?.response?.data?.pickup_token_number,
+        response?.response?.data?.pickupTokenNumber
       )
     ),
   };
@@ -243,66 +316,7 @@ function extractAvailableCouriers(response) {
     response?.data?.couriers ||
     response?.couriers ||
     []
-  );function extractShiprocketIds(response = {}) {
-  return {
-    shiprocketOrderId: asString(
-      pickFirst(
-        response?.order_id,
-        response?.orderId,
-        response?.data?.order_id,
-        response?.data?.orderId,
-        response?.payload?.order_id,
-        response?.payload?.orderId,
-
-        // AWB API response
-        response?.response?.data?.order_id,
-        response?.response?.data?.orderId
-      )
-    ),
-
-    shipmentId: asString(
-      pickFirst(
-        response?.shipment_id,
-        response?.shipmentId,
-        response?.data?.shipment_id,
-        response?.data?.shipmentId,
-        response?.payload?.shipment_id,
-        response?.payload?.shipmentId,
-
-        // AWB API response
-        response?.response?.data?.shipment_id,
-        response?.response?.data?.shipmentId
-      )
-    ),
-
-    awbCode: asString(
-      pickFirst(
-        response?.awb_code,
-        response?.awbCode,
-        response?.data?.awb_code,
-        response?.data?.awbCode,
-        response?.result?.awb_code,
-        response?.result?.awbCode,
-
-        // AWB API response
-        response?.response?.data?.awb_code,
-        response?.response?.data?.awbCode
-      )
-    ),
-
-    pickupTokenNumber: asString(
-      pickFirst(
-        response?.pickup_token_number,
-        response?.pickupTokenNumber,
-        response?.data?.pickup_token_number,
-        response?.data?.pickupTokenNumber,
-
-        response?.response?.data?.pickup_token_number,
-        response?.response?.data?.pickupTokenNumber
-      )
-    ),
-  };
-}
+  );
 }
 
 function extractTrackingActivities(response) {
@@ -388,6 +402,16 @@ function getMutableShipmentStatus(currentStatus, desiredStatus) {
   return desiredStatus;
 }
 
+function resolveNextOrderStatus(nextShipmentStatus) {
+  let nextOrderStatus = SHIPMENT_TO_ORDER_STATUS[nextShipmentStatus] || null;
+
+  if (isRtoShipmentStatus(nextShipmentStatus)) {
+    nextOrderStatus = "Cancelled";
+  }
+
+  return nextOrderStatus;
+}
+
 async function upsertCourierFromShiprocket(courier) {
   const id = toNumber(
     pickFirst(
@@ -415,9 +439,7 @@ async function upsertCourierFromShiprocket(courier) {
       baseCourierId: toNumber(
         pickFirst(courier?.base_courier_id, courier?.baseCourierId)
       ),
-      minWeight: toNumber(
-        pickFirst(courier?.min_weight, courier?.minWeight)
-      ),
+      minWeight: toNumber(pickFirst(courier?.min_weight, courier?.minWeight)),
       mode: toNumber(courier?.mode),
       serviceType: toNumber(
         pickFirst(courier?.service_type, courier?.serviceType)
@@ -430,10 +452,7 @@ async function upsertCourierFromShiprocket(courier) {
         pickFirst(courier?.pod_available, courier?.podAvailable)
       ),
       callBeforeDelivery: asString(
-        pickFirst(
-          courier?.call_before_delivery,
-          courier?.callBeforeDelivery
-        )
+        pickFirst(courier?.call_before_delivery, courier?.callBeforeDelivery)
       ),
     },
     update: {
@@ -448,9 +467,7 @@ async function upsertCourierFromShiprocket(courier) {
       baseCourierId: toNumber(
         pickFirst(courier?.base_courier_id, courier?.baseCourierId)
       ),
-      minWeight: toNumber(
-        pickFirst(courier?.min_weight, courier?.minWeight)
-      ),
+      minWeight: toNumber(pickFirst(courier?.min_weight, courier?.minWeight)),
       mode: toNumber(courier?.mode),
       serviceType: toNumber(
         pickFirst(courier?.service_type, courier?.serviceType)
@@ -463,38 +480,13 @@ async function upsertCourierFromShiprocket(courier) {
         pickFirst(courier?.pod_available, courier?.podAvailable)
       ),
       callBeforeDelivery: asString(
-        pickFirst(
-          courier?.call_before_delivery,
-          courier?.callBeforeDelivery
-        )
+        pickFirst(courier?.call_before_delivery, courier?.callBeforeDelivery)
       ),
     },
   });
 }
 
-export async function findShipment(
-  identifier,
-  include = {}
-) {
-  return prisma.shipment.findFirst({
-    where: {
-      OR: [
-        {
-          id: String(identifier),
-        },
-        {
-          shipmentId: String(identifier),
-        },
-      ],
-    },
-
-    include,
-  });
-}
-
 async function emitOrderEvent(eventName, payload) {
-  // Placeholder for your future event bus / queue / webhook emitter.
-  // Replace this with Kafka, RabbitMQ, Redis streams, or your internal bus.
   return { eventName, payload };
 }
 
@@ -541,16 +533,6 @@ async function appendTrackingEventWithClient(
   });
 }
 
-const ORDER_STATUS_PRIORITY = {
-  Pending: 0,
-  Confirmed: 1,
-  Packed: 2,
-  Shipped: 3,
-  Delivered: 4,
-  Returned: 4,
-  Cancelled: 4,
-};
-
 async function updateShipmentStatusWithClient(
   db,
   {
@@ -573,161 +555,187 @@ async function updateShipmentStatusWithClient(
   }
 
   const shipment = await db.shipment.findUnique({
-    where: {
-      id: shipmentDbId,
-    },
+    where: { id: shipmentDbId },
   });
 
   if (!shipment) {
     throw new Error("Shipment not found");
   }
 
+  const previousShipmentStatus = shipment.shipmentStatus || null;
   const nextShipmentStatus = shipmentStatus
     ? normalizeShiprocketStatus(shipmentStatus)
     : shipment.shipmentStatus;
 
   const updatedShipment = await db.shipment.update({
-    where: {
-      id: shipmentDbId,
-    },
+    where: { id: shipmentDbId },
     data: {
-      shipmentStatus:
-        nextShipmentStatus || undefined,
-
-      courierId:
-        courierId !== undefined
-          ? courierId
-          : undefined,
-
-      courierName:
-        courierName !== undefined
-          ? courierName
-          : undefined,
-
-      awbCode:
-        awbCode !== undefined
-          ? awbCode
-          : undefined,
-
+      shipmentStatus: nextShipmentStatus || undefined,
+      courierId: courierId !== undefined ? courierId : undefined,
+      courierName: courierName !== undefined ? courierName : undefined,
+      awbCode: awbCode !== undefined ? awbCode : undefined,
       pickupTokenNumber:
-        pickupTokenNumber !== undefined
-          ? pickupTokenNumber
-          : undefined,
-
-      assignedAt:
-        assignedAt !== undefined
-          ? assignedAt
-          : undefined,
-
+        pickupTokenNumber !== undefined ? pickupTokenNumber : undefined,
+      assignedAt: assignedAt !== undefined ? assignedAt : undefined,
       shiprocketOrderId:
-        shiprocketOrderId !== undefined
-          ? shiprocketOrderId
-          : undefined,
-
-      shipmentId:
-        shipmentId !== undefined
-          ? shipmentId
-          : undefined,
+        shiprocketOrderId !== undefined ? shiprocketOrderId : undefined,
+      shipmentId: shipmentId !== undefined ? shipmentId : undefined,
     },
   });
 
-  if (
-    nextShipmentStatus ||
-    activity ||
-    location ||
-    scanTimestamp
-  ) {
+  const nextOrderStatus = resolveNextOrderStatus(nextShipmentStatus);
+
+  if (nextOrderStatus && shipment.orderId) {
+    await db.order.update({
+      where: { id: shipment.orderId },
+      data: { status: nextOrderStatus },
+    });
+  }
+
+  if (nextShipmentStatus || activity || location || scanTimestamp) {
     await appendTrackingEventWithClient(db, {
       shipmentDbId,
-      status:
-        nextShipmentStatus ||
-        "Unknown",
-
-      activity:
-        activity ||
-        nextShipmentStatus ||
-        "Tracking update",
-
+      status: nextShipmentStatus || "Unknown",
+      activity: activity || nextShipmentStatus || "Tracking update",
       location,
       scanTimestamp,
     });
   }
 
-  /* =====================================
-     SYNC ORDER STATUS
-  ===================================== */
+  await emitOrderEvent("shipment.updated", {
+    shipmentDbId,
+    orderId: shipment.orderId,
+    shipmentStatus: nextShipmentStatus,
+  });
+
+  return {
+    shipment: updatedShipment,
+    previousShipmentStatus,
+    nextShipmentStatus,
+  };
+}
+
+function normalizeDeliveredDate(scanTimestamp, fallback = new Date().toISOString()) {
+  if (!scanTimestamp) return fallback;
+  if (scanTimestamp instanceof Date) return scanTimestamp.toISOString();
+  return String(scanTimestamp);
+}
+
+async function triggerShipmentAutomations({
+  shipment,
+  previousShipmentStatus,
+  nextShipmentStatus,
+  awbCode = null,
+  courierName = null,
+  scanTimestamp = null,
+  payload = {},
+}) {
+  if (!shipment || previousShipmentStatus === nextShipmentStatus) return;
+
+  const basePayload = buildOrderAutomationBase(shipment);
+  const trackingUrl = getTrackingUrl(shipment);
 
   if (
-    shipment.orderId &&
-    nextShipmentStatus
+    shouldFireAutomation(
+      previousShipmentStatus,
+      nextShipmentStatus,
+      SHIPPED_AUTOMATION_STATUSES
+    )
   ) {
-    const nextOrderStatus =
-      SHIPMENT_TO_ORDER_STATUS[
-        nextShipmentStatus
-      ];
-
-    if (nextOrderStatus) {
-      const order =
-        await db.order.findUnique({
-          where: {
-            id: shipment.orderId,
-          },
-        });
-
-      if (order) {
-        const currentPriority =
-          ORDER_STATUS_PRIORITY[
-            order.status
-          ] ?? 0;
-
-        const nextPriority =
-          ORDER_STATUS_PRIORITY[
-            nextOrderStatus
-          ] ?? 0;
-
-        const terminalStatuses =
-          new Set([
-            "Delivered",
-            "Cancelled",
-            "Returned",
-          ]);
-
-        const isCurrentTerminal =
-          terminalStatuses.has(
-            order.status
-          );
-
-        if (
-          !isCurrentTerminal &&
-          nextPriority >=
-            currentPriority
-        ) {
-          await db.order.update({
-            where: {
-              id: shipment.orderId,
-            },
-            data: {
-              status:
-                nextOrderStatus,
-            },
-          });
-        }
-      }
-    }
+    await safeQueueAutomation(
+      queueOrderShippedEvent,
+      {
+        ...basePayload,
+        courier_name: courierName || shipment.courierName || null,
+        awb_number: awbCode || shipment.awbCode || null,
+        tracking_url: trackingUrl,
+        estimated_delivery: pickFirst(
+          payload?.estimated_delivery,
+          payload?.estimatedDelivery,
+          payload?.etd,
+          payload?.estimated_delivery_date
+        ),
+      },
+      "ORDER_SHIPPED"
+    );
   }
 
-  await emitOrderEvent(
-    "shipment.updated",
-    {
-      shipmentDbId,
-      orderId:
-        shipment.orderId,
-      shipmentStatus:
-        nextShipmentStatus,
-    }
-  );
+  if (
+    shouldFireAutomation(
+      previousShipmentStatus,
+      nextShipmentStatus,
+      OUT_FOR_DELIVERY_AUTOMATION_STATUSES
+    )
+  ) {
+    await safeQueueAutomation(
+      queueOrderOutForDeliveryEvent,
+      {
+        ...basePayload,
+        courier_name: courierName || shipment.courierName || null,
+        awb_number: awbCode || shipment.awbCode || null,
+        delivery_date: normalizeDeliveredDate(
+          pickFirst(scanTimestamp, payload?.delivery_date)
+        ),
+        tracking_url: trackingUrl,
+      },
+      "ORDER_OUT_FOR_DELIVERY"
+    );
+  }
 
-  return updatedShipment;
+  if (
+    shouldFireAutomation(
+      previousShipmentStatus,
+      nextShipmentStatus,
+      DELIVERED_AUTOMATION_STATUSES
+    )
+  ) {
+    await safeQueueAutomation(
+      queueOrderDeliveredEvent,
+      {
+        ...basePayload,
+        delivery_date: normalizeDeliveredDate(
+          pickFirst(scanTimestamp, payload?.delivery_date)
+        ),
+        order_url: getOrderDetailsUrl(shipment),
+      },
+      "ORDER_DELIVERED"
+    );
+  }
+
+  if (
+    shouldFireAutomation(
+      previousShipmentStatus,
+      nextShipmentStatus,
+      CANCELLED_AUTOMATION_STATUSES
+    )
+  ) {
+    await safeQueueAutomation(
+      queueOrderCancelledEvent,
+      {
+        ...basePayload,
+        cancelled_date: new Date().toISOString(),
+      },
+      "ORDER_CANCELLED"
+    );
+  }
+
+  if (
+    shouldFireAutomation(
+      previousShipmentStatus,
+      nextShipmentStatus,
+      RETURNED_AUTOMATION_STATUSES
+    )
+  ) {
+    await safeQueueAutomation(
+      queueOrderReturnedEvent,
+      {
+        ...basePayload,
+        return_date: new Date().toISOString(),
+        awb_number: awbCode || shipment.awbCode || null,
+      },
+      "ORDER_RETURNED"
+    );
+  }
 }
 
 /* =====================================================
@@ -779,7 +787,7 @@ export async function createShipmentForOrder(orderId, shiprocketPayload) {
       awbCode,
       courierId: null,
       courierName: null,
-      shipmentStatus: normalizeShiprocketStatus("NEW"), // "Confirmed"
+      shipmentStatus: normalizeShiprocketStatus("NEW"),
       pickupScheduledAt: null,
       pickupTokenNumber: null,
       assignedAt: null,
@@ -807,6 +815,15 @@ export async function createShipmentForOrder(orderId, shiprocketPayload) {
     shipment,
     shiprocketResponse,
   };
+}
+
+export async function findShipment(identifier, include = {}) {
+  return prisma.shipment.findFirst({
+    where: {
+      OR: [{ id: String(identifier) }, { shipmentId: String(identifier) }],
+    },
+    include,
+  });
 }
 
 /* =====================================================
@@ -844,9 +861,7 @@ export async function assignAWBToShipment({ shipmentDbId, courierId }) {
   const externalShipmentId = getShipmentExternalId(shipment);
 
   if (!externalShipmentId) {
-    throw new Error(
-      "No Shiprocket shipment id available for AWB generation"
-    );
+    throw new Error("No Shiprocket shipment id available for AWB generation");
   }
 
   const chosenCourierId = toNumber(courierId) || shipment.courierId;
@@ -867,9 +882,7 @@ export async function assignAWBToShipment({ shipmentDbId, courierId }) {
 
   const updatedShipment = await prisma.$transaction(async (tx) => {
     const next = await tx.shipment.update({
-      where: {
-        id: shipment.id,
-      },
+      where: { id: shipment.id },
       data: {
         awbCode: awbCode || shipment.awbCode,
         courierId: chosenCourierId,
@@ -920,15 +933,10 @@ export async function requestPickupForShipment(shipmentDbId) {
     throw new Error("shipmentDbId is required");
   }
 
-  const shipment = await prisma.shipment.findFirst({
-    where: {
-      shipmentId: String(shipmentDbId),
-    },
-    include: {
-      order: {
-        include: {
-          user: true,
-        },
+  const shipment = await findShipment(shipmentDbId, {
+    order: {
+      include: {
+        user: true,
       },
     },
   });
@@ -937,130 +945,69 @@ export async function requestPickupForShipment(shipmentDbId) {
     throw new Error("Shipment not found");
   }
 
-  const externalShipmentId =
-    getShipmentExternalId(shipment);
+  const externalShipmentId = getShipmentExternalId(shipment);
 
-  const shiprocketResponse =
-    await requestPickup(
-      externalShipmentId
-    );
+  if (!externalShipmentId) {
+    throw new Error("No Shiprocket shipment id available for pickup request");
+  }
 
-  const { pickupTokenNumber } =
-    extractShiprocketIds(
-      shiprocketResponse
-    );
+  const previousShipmentStatus = shipment.shipmentStatus || null;
+  const nextShipmentStatus = getMutableShipmentStatus(
+    shipment.shipmentStatus,
+    normalizeShiprocketStatus("PICKUP_GENERATED")
+  );
 
-  const updatedShipment =
-    await prisma.$transaction(
-      async (tx) => {
-        const next =
-          await tx.shipment.update({
-            where: {
-              id: shipment.id,
-            },
-            data: {
-              pickupScheduledAt:
-                new Date(),
+  const shiprocketResponse = await requestPickup(externalShipmentId);
+  const { pickupTokenNumber } = extractShiprocketIds(shiprocketResponse);
 
-              pickupTokenNumber:
-                pickupTokenNumber ||
-                asString(
-                  pickFirst(
-                    shiprocketResponse?.pickup_token_number,
-                    shiprocketResponse?.pickupToken,
-                    shiprocketResponse?.token_number
-                  )
-                ),
+  const updatedShipment = await prisma.$transaction(async (tx) => {
+    const next = await tx.shipment.update({
+      where: { id: shipment.id },
+      data: {
+        pickupScheduledAt: new Date(),
+        pickupTokenNumber:
+          pickupTokenNumber ||
+          asString(
+            pickFirst(
+              shiprocketResponse?.pickup_token_number,
+              shiprocketResponse?.pickupToken,
+              shiprocketResponse?.token_number
+            )
+          ),
+        shipmentStatus: nextShipmentStatus,
+      },
+    });
 
-              shipmentStatus:
-                getMutableShipmentStatus(
-                  shipment.shipmentStatus,
-                  normalizeShiprocketStatus(
-                    "PICKUP_GENERATED"
-                  )
-                ),
-            },
-          });
+    await appendTrackingEventWithClient(tx, {
+      shipmentDbId: shipment.id,
+      status: normalizeShiprocketStatus("PICKUP_GENERATED"),
+      activity: "Pickup requested",
+      location: "System",
+      scanTimestamp: new Date(),
+    });
 
-        await appendTrackingEventWithClient(
-          tx,
-          {
-            shipmentDbId:
-              shipment.id,
+    return next;
+  });
 
-            status:
-              normalizeShiprocketStatus(
-                "PICKUP_GENERATED"
-              ),
-
-            activity:
-              "Pickup requested",
-
-            location:
-              "System",
-
-            scanTimestamp:
-              new Date(),
-          }
-        );
-
-        return next;
-      }
-    );
-
-  /* =====================================
-     ORDER_PACKED AUTOMATION
-  ===================================== */
-
-  try {
-    await triggerAutomationEvent(
-      EVENT_TYPES.ORDER_PACKED,
+  if (previousShipmentStatus !== nextShipmentStatus) {
+    await safeQueueAutomation(
+      queueOrderPackedEvent,
       {
-        customer_name:
-          shipment.order?.user
-            ?.name ||
-          "Customer",
-
-        email:
-          shipment.order?.user
-            ?.email,
-
-        user_id:
-          shipment.order
-            ?.userId,
-
-        order_id:
-          shipment.orderId,
-
-        order_number:
-          shipment.order
-            ?.orderNumber,
-
-        pickup_token_number:
-          updatedShipment.pickupTokenNumber,
-
-        packed_date:
-          new Date().toISOString(),
-
-        order_url:
-          `${process.env.CLIENT_URL}/order-details/${shipment.orderId}`,
-      }
-    );
-
-    console.log(
-      "✅ ORDER_PACKED automation triggered"
-    );
-  } catch (error) {
-    console.error(
-      "❌ ORDER_PACKED automation failed:",
-      error.message
+        customer_name: shipment?.order?.user?.name || null,
+        email: shipment?.order?.user?.email || null,
+        user_id: shipment?.order?.userId || null,
+        order_id: shipment?.orderId || null,
+        order_number: shipment?.order?.orderNumber || null,
+        packed_date: new Date().toISOString(),
+        order_url: getOrderDetailsUrl(shipment),
+      },
+      "ORDER_PACKED"
     );
   }
 
   return {
     success: true,
-    shipment:
-      updatedShipment,
+    shipment: updatedShipment,
     shiprocketResponse,
   };
 }
@@ -1218,17 +1165,10 @@ export async function checkServiceabilityAndStore({
           estimatedDays,
           etd:
             asString(
-              pickFirst(
-                courier?.etd,
-                courier?.estimated_delivery_date
-              )
+              pickFirst(courier?.etd, courier?.estimated_delivery_date)
             ) || null,
           freightCharge: toNumber(
-            pickFirst(
-              courier?.freight_charge,
-              courier?.rate,
-              courier?.charge
-            )
+            pickFirst(courier?.freight_charge, courier?.rate, courier?.charge)
           ),
           rtoCharges: toNumber(
             pickFirst(courier?.rto_charges, courier?.rtoCharge)
@@ -1325,10 +1265,7 @@ export async function getDeliveryEstimateService(pincode, options = {}) {
     );
 
     const bestDays = toNumber(
-      pickFirst(
-        best?.estimated_delivery_days,
-        best?.estimatedDeliveryDays
-      ),
+      pickFirst(best?.estimated_delivery_days, best?.estimatedDeliveryDays),
       999
     );
 
@@ -1398,13 +1335,18 @@ export async function syncShipmentTracking(shipmentDbId) {
   }
 
   const shipment = await findShipment(shipmentDbId, {
-    order: true,
+    order: {
+      include: {
+        user: true,
+      },
+    },
   });
 
   if (!shipment) {
     throw new Error("Shipment not found");
   }
 
+  const previousShipmentStatus = shipment.shipmentStatus || null;
   const trackingId = getTrackingId(shipment);
   const response = await trackShipment(trackingId);
   const activities = extractTrackingActivities(response);
@@ -1436,6 +1378,9 @@ export async function syncShipmentTracking(shipmentDbId) {
       const bTime = b.scanTimestamp ? new Date(b.scanTimestamp).getTime() : 0;
       return bTime - aTime;
     })[0] || null;
+
+  let nextShipmentStatus = previousShipmentStatus;
+  let updatedShipment = shipment;
 
   await prisma.$transaction(async (tx) => {
     const existing = await tx.shipmentTracking.findMany({
@@ -1469,24 +1414,50 @@ export async function syncShipmentTracking(shipmentDbId) {
     }
 
     if (latestEvent?.status) {
-      const normalizedShipmentStatus = normalizeShiprocketStatus(
-        latestEvent.status
-      );
+      nextShipmentStatus =
+        normalizeShiprocketStatus(latestEvent.status) || previousShipmentStatus;
+      const nextOrderStatus = resolveNextOrderStatus(nextShipmentStatus);
 
-      await tx.shipment.update({
+      updatedShipment = await tx.shipment.update({
         where: { id: shipment.id },
         data: {
-          shipmentStatus: normalizedShipmentStatus || shipment.shipmentStatus,
+          shipmentStatus: nextShipmentStatus,
         },
       });
+
+      if (nextOrderStatus && shipment.orderId) {
+        await tx.order.update({
+          where: { id: shipment.orderId },
+          data: {
+            status: nextOrderStatus,
+          },
+        });
+      }
     }
   });
+
+  if (previousShipmentStatus !== nextShipmentStatus) {
+    await triggerShipmentAutomations({
+      shipment,
+      previousShipmentStatus,
+      nextShipmentStatus,
+      awbCode: shipment.awbCode || null,
+      courierName: shipment.courierName || null,
+      scanTimestamp: latestEvent?.scanTimestamp || null,
+      payload: {
+        delivery_date: latestEvent?.scanTimestamp || null,
+      },
+    });
+  }
 
   return {
     success: true,
     shipmentId: shipment.id,
     events: deduped,
     raw: response,
+    shipment: updatedShipment,
+    previousShipmentStatus,
+    nextShipmentStatus,
   };
 }
 
@@ -1503,7 +1474,6 @@ export async function getShipmentDetails(identifier) {
         items: true,
       },
     },
-
     trackingEvents: {
       orderBy: {
         createdAt: "desc",
@@ -1577,43 +1547,26 @@ export async function cancelShipment(shiprocketOrderId) {
   });
 }
 
-
-
 export async function cancelShipmentForShipment(shipmentDbId) {
   if (!shipmentDbId) {
     throw new Error("shipmentDbId is required");
   }
 
   const shipment = await findShipment(shipmentDbId, {
-    order: true,
+    order: {
+      include: {
+        user: true,
+      },
+    },
   });
 
   if (!shipment) {
     throw new Error("Shipment not found");
   }
 
-  const trackingId = getTrackingId(shipment);
-
-  // Cancel in Shiprocket first
-  const response = await cancelShipment(trackingId);
-
-  // Already cancelled locally
-  if (
-    shipment.order &&
-    String(shipment.order.status).toLowerCase() ===
-      "cancelled"
-  ) {
-    return response;
-  }
-
-  // Reuse existing cancellation flow
-  await cancelOrderService(
-    shipment.order.userId,
-    shipment.orderId
-  );
-
-  return response;
+  return cancelOrderService(shipment.order?.userId, shipment.orderId);
 }
+
 /* =====================================================
    NEW DB-LEVEL SHIPMENT UPDATE / TRACKING HELPERS
 ===================================================== */
@@ -1664,6 +1617,183 @@ export async function updateShipmentStatus({
       shipmentId,
     });
   });
+}
+
+/* =====================================================
+   SHIPROCKET WEBHOOK PROCESSOR
+===================================================== */
+
+export async function processShiprocketWebhook(payload) {
+  if (!payload) {
+    throw new Error("Webhook payload is required");
+  }
+
+  const shipmentRefId = pickFirst(
+    payload?.shipment_id,
+    payload?.shipmentId,
+    payload?.shipmentID
+  );
+
+  const shiprocketOrderId = pickFirst(
+    payload?.order_id,
+    payload?.orderId,
+    payload?.shiprocket_order_id,
+    payload?.shiprocketOrderId
+  );
+
+  const shipmentIdString = shipmentRefId ? String(shipmentRefId) : null;
+  const orderIdString = shiprocketOrderId ? String(shiprocketOrderId) : null;
+
+  let shipment = null;
+
+  if (shipmentIdString) {
+    shipment = await prisma.shipment.findUnique({
+      where: { shipmentId: shipmentIdString },
+      include: {
+        order: {
+          include: {
+            user: true,
+          },
+        },
+      },
+    });
+  }
+
+  if (!shipment && orderIdString) {
+    shipment = await prisma.shipment.findFirst({
+      where: { shiprocketOrderId: orderIdString },
+      include: {
+        order: {
+          include: {
+            user: true,
+          },
+        },
+      },
+    });
+  }
+
+  if (!shipment) {
+    return {
+      success: false,
+      reason: "Shipment not found",
+    };
+  }
+
+  if (shipment.order && isOrderTerminalStatus(shipment.order.status)) {
+    return {
+      success: true,
+      skipped: true,
+    };
+  }
+
+  const rawShipmentStatus = pickFirst(
+    payload?.status,
+    payload?.current_status,
+    payload?.shipment_status,
+    payload?.event_status,
+    payload?.tracking_status
+  );
+
+  const normalizedIncomingStatus = normalizeShiprocketStatus(rawShipmentStatus);
+
+  const activity = pickFirst(
+    payload?.activity,
+    payload?.note,
+    payload?.details,
+    payload?.description,
+    payload?.current_status,
+    normalizedIncomingStatus
+  );
+
+  const location = pickFirst(
+    payload?.location,
+    payload?.city,
+    payload?.hub_name,
+    payload?.scanned_location,
+    payload?.destination
+  );
+
+  const scanTimestamp = pickFirst(
+    payload?.scan_timestamp,
+    payload?.scanTimestamp,
+    payload?.date,
+    payload?.created_at,
+    payload?.updated_at
+  );
+
+  const awbCode = pickFirst(payload?.awb_code, payload?.awbCode);
+
+  const courierId = toNumber(
+    pickFirst(
+      payload?.courier_company_id,
+      payload?.courier_id,
+      payload?.courierId
+    )
+  );
+
+  const courierName = pickFirst(payload?.courier_name, payload?.courierName);
+
+  const pickupTokenNumber = pickFirst(
+    payload?.pickup_token_number,
+    payload?.pickupTokenNumber,
+    payload?.pickup_token,
+    payload?.pickupToken
+  );
+
+  const previousShipmentStatus = shipment.shipmentStatus || null;
+
+  const updateResult = await updateShipmentStatus({
+    shipmentDbId: shipment.id,
+    shipmentStatus: normalizedIncomingStatus || shipment.shipmentStatus,
+    activity: activity || "Webhook update",
+    location,
+    scanTimestamp,
+    courierId: courierId || undefined,
+    courierName: courierName || undefined,
+    awbCode: awbCode || undefined,
+    pickupTokenNumber: pickupTokenNumber || undefined,
+    assignedAt: shipment.assignedAt || undefined,
+    shiprocketOrderId: orderIdString || undefined,
+    shipmentId: shipmentIdString || undefined,
+  });
+
+  const nextShipmentStatus = updateResult.nextShipmentStatus;
+
+  if (previousShipmentStatus === nextShipmentStatus) {
+    return {
+      success: true,
+      shipment: updateResult.shipment,
+      previousShipmentStatus,
+      nextShipmentStatus,
+      orderId: shipment.orderId,
+      skipped: true,
+    };
+  }
+
+  await triggerShipmentAutomations({
+    shipment,
+    previousShipmentStatus,
+    nextShipmentStatus,
+    awbCode: awbCode || shipment.awbCode || null,
+    courierName: courierName || shipment.courierName || null,
+    scanTimestamp,
+    payload,
+  });
+
+  await emitOrderEvent("shiprocket.webhook.processed", {
+    shipmentDbId: shipment.id,
+    orderId: shipment.orderId,
+    shipmentStatus: nextShipmentStatus,
+    rawPayload: payload,
+  });
+
+  return {
+    success: true,
+    shipment: updateResult.shipment,
+    previousShipmentStatus,
+    nextShipmentStatus,
+    orderId: shipment.orderId,
+  };
 }
 
 /* =====================================================
@@ -1765,87 +1895,36 @@ export async function createExchangeOrder(payload) {
 ===================================================== */
 
 export default {
-  /* ==========================================
-     AUTH
-  ========================================== */
   getShiprocketToken,
-
-  /* ==========================================
-     ORDER CREATION
-  ========================================== */
   createShiprocketOrder,
   createShipmentForOrder,
-
-  /* ==========================================
-     SHIPROCKET ORDERS
-  ========================================== */
   getShiprocketOrders,
   getShiprocketOrderDetails,
-
-  /* ==========================================
-     AWB
-  ========================================== */
   generateAWB,
   assignAWBToShipment,
-
-  /* ==========================================
-     PICKUP
-  ========================================== */
   requestPickup,
   requestPickupForShipment,
-
-  /* ==========================================
-     COURIERS
-  ========================================== */
   getAvailableCouriers,
   listActiveCouriers,
   getCourierById,
   syncCouriersToDbFromServiceability,
-
-  /* ==========================================
-     SERVICEABILITY
-  ========================================== */
   checkServiceability,
   checkServiceabilityAndStore,
   getDeliveryEstimateService,
-
-  /* ==========================================
-     TRACKING
-  ========================================== */
   trackShipment,
   getTrackingDetails,
   syncShipmentTracking,
-
-  /* ==========================================
-     SHIPMENTS
-  ========================================== */
   getShipmentDetails,
   appendTrackingEvent,
   updateShipmentStatus,
   isOrderTerminalStatus,
-
-  /* ==========================================
-     INVOICES
-  ========================================== */
   getInvoiceUrl,
   downloadInvoiceForShipment,
-
-  /* ==========================================
-     CANCELLATION
-  ========================================== */
   cancelShipment,
   cancelShipmentForShipment,
-
-  /* ==========================================
-     RETURNS
-  ========================================== */
   createReturnOrder,
   updateReturnOrder,
   getReturnOrders,
-
-  /* ==========================================
-     EXCHANGE
-  ========================================== */
   createExchangeOrder,
-
+  processShiprocketWebhook,
 };
