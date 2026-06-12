@@ -5,7 +5,7 @@ import {
   SHIPROCKET_STATUS_MAP,
   SHIPMENT_TO_ORDER_STATUS,
 } from "./shiprocket.constants.js";
-import { cancelOrderService } from "./order.service.js";
+import { cancelOrderService } from "../../modules/orders/order.service.js";
 import {
   queueOrderPackedEvent,
   queueOrderShippedEvent,
