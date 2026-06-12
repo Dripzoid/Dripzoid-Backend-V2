@@ -3,6 +3,8 @@ import axios from "axios";
 import { PrismaClient } from "@prisma/client";
 import { SHIPROCKET_STATUS_MAP,SHIPMENT_TO_ORDER_STATUS, } from "./shiprocket.constants.js";
 import { cancelOrderService } from "../../modules/orders/order.service.js";
+import { triggerAutomationEvent } from "../automation/automation.service.js";
+import { EVENT_TYPES } from "../../config/eventTypes.js";
 
 /**
  * If your project already exports a shared prisma client,
@@ -919,60 +921,146 @@ export async function requestPickupForShipment(shipmentDbId) {
   }
 
   const shipment = await prisma.shipment.findFirst({
-  where: {
-    shipmentId: String(shipmentDbId),
-  },
-});
+    where: {
+      shipmentId: String(shipmentDbId),
+    },
+    include: {
+      order: {
+        include: {
+          user: true,
+        },
+      },
+    },
+  });
 
   if (!shipment) {
     throw new Error("Shipment not found");
   }
 
-  const externalShipmentId = getShipmentExternalId(shipment);
+  const externalShipmentId =
+    getShipmentExternalId(shipment);
 
-  if (!externalShipmentId) {
-    throw new Error("No Shiprocket shipment id available for pickup request");
+  const shiprocketResponse =
+    await requestPickup(
+      externalShipmentId
+    );
+
+  const { pickupTokenNumber } =
+    extractShiprocketIds(
+      shiprocketResponse
+    );
+
+  const updatedShipment =
+    await prisma.$transaction(
+      async (tx) => {
+        const next =
+          await tx.shipment.update({
+            where: {
+              id: shipment.id,
+            },
+            data: {
+              pickupScheduledAt:
+                new Date(),
+
+              pickupTokenNumber:
+                pickupTokenNumber ||
+                asString(
+                  pickFirst(
+                    shiprocketResponse?.pickup_token_number,
+                    shiprocketResponse?.pickupToken,
+                    shiprocketResponse?.token_number
+                  )
+                ),
+
+              shipmentStatus:
+                getMutableShipmentStatus(
+                  shipment.shipmentStatus,
+                  normalizeShiprocketStatus(
+                    "PICKUP_GENERATED"
+                  )
+                ),
+            },
+          });
+
+        await appendTrackingEventWithClient(
+          tx,
+          {
+            shipmentDbId:
+              shipment.id,
+
+            status:
+              normalizeShiprocketStatus(
+                "PICKUP_GENERATED"
+              ),
+
+            activity:
+              "Pickup requested",
+
+            location:
+              "System",
+
+            scanTimestamp:
+              new Date(),
+          }
+        );
+
+        return next;
+      }
+    );
+
+  /* =====================================
+     ORDER_PACKED AUTOMATION
+  ===================================== */
+
+  try {
+    await triggerAutomationEvent(
+      EVENT_TYPES.ORDER_PACKED,
+      {
+        customer_name:
+          shipment.order?.user
+            ?.name ||
+          "Customer",
+
+        email:
+          shipment.order?.user
+            ?.email,
+
+        user_id:
+          shipment.order
+            ?.userId,
+
+        order_id:
+          shipment.orderId,
+
+        order_number:
+          shipment.order
+            ?.orderNumber,
+
+        pickup_token_number:
+          updatedShipment.pickupTokenNumber,
+
+        packed_date:
+          new Date().toISOString(),
+
+        order_url:
+          `${process.env.CLIENT_URL}/order-details/${shipment.orderId}`,
+      }
+    );
+
+    console.log(
+      "✅ ORDER_PACKED automation triggered"
+    );
+  } catch (error) {
+    console.error(
+      "❌ ORDER_PACKED automation failed:",
+      error.message
+    );
   }
-
-  const shiprocketResponse = await requestPickup(externalShipmentId);
-
-  const { pickupTokenNumber } = extractShiprocketIds(shiprocketResponse);
-
-  const updatedShipment = await prisma.$transaction(async (tx) => {
-    const next = await tx.shipment.update({
-      where: { id: shipment.id },
-      data: {
-        pickupScheduledAt: new Date(),
-        pickupTokenNumber:
-          pickupTokenNumber ||
-          asString(
-            pickFirst(
-              shiprocketResponse?.pickup_token_number,
-              shiprocketResponse?.pickupToken,
-              shiprocketResponse?.token_number
-            )
-          ),
-        shipmentStatus: getMutableShipmentStatus(
-          shipment.shipmentStatus,
-          normalizeShiprocketStatus("PICKUP_GENERATED")
-        ),
-      },
-    });
-
-    await appendTrackingEventWithClient(tx, {
-      shipmentDbId: shipment.id,
-      status: normalizeShiprocketStatus("PICKUP_GENERATED"),
-      activity: "Pickup requested",
-      location: "System",
-      scanTimestamp: new Date(),
-    });
-
-    return next;
-  });
 
   return {
     success: true,
-    shipment: updatedShipment,
+    shipment:
+      updatedShipment,
     shiprocketResponse,
   };
 }
