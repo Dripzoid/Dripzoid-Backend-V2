@@ -1,8 +1,8 @@
 import express from "express";
 
 import {
-  getPendingScheduledTasks,
-  updateScheduledTask,
+  getPendingAutomationEvents,
+  updateAutomationEvent,
   getAutomationEventById,
 } from "./scheduler.controller.js";
 
