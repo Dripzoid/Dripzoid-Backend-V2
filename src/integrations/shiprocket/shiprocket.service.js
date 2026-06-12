@@ -1,7 +1,7 @@
 // src/services/shipping.service.js
 import axios from "axios";
 import { PrismaClient } from "@prisma/client";
-import { SHIPROCKET_STATUS_MAP } from "./shiprocket.constants.js";
+import { SHIPROCKET_STATUS_MAP,SHIPMENT_TO_ORDER_STATUS, } from "./shiprocket.constants.js";
 
 /**
  * If your project already exports a shared prisma client,
@@ -538,6 +538,16 @@ async function appendTrackingEventWithClient(
   });
 }
 
+const ORDER_STATUS_PRIORITY = {
+  Pending: 0,
+  Confirmed: 1,
+  Packed: 2,
+  Shipped: 3,
+  Delivered: 4,
+  Returned: 4,
+  Cancelled: 4,
+};
+
 async function updateShipmentStatusWithClient(
   db,
   {
@@ -555,10 +565,14 @@ async function updateShipmentStatusWithClient(
     shipmentId = undefined,
   }
 ) {
-  if (!shipmentDbId) throw new Error("shipmentDbId is required");
+  if (!shipmentDbId) {
+    throw new Error("shipmentDbId is required");
+  }
 
   const shipment = await db.shipment.findUnique({
-    where: { id: shipmentDbId },
+    where: {
+      id: shipmentDbId,
+    },
   });
 
   if (!shipment) {
@@ -570,36 +584,145 @@ async function updateShipmentStatusWithClient(
     : shipment.shipmentStatus;
 
   const updatedShipment = await db.shipment.update({
-    where: { id: shipmentDbId },
+    where: {
+      id: shipmentDbId,
+    },
     data: {
-      shipmentStatus: nextShipmentStatus || undefined,
-      courierId: courierId !== undefined ? courierId : undefined,
-      courierName: courierName !== undefined ? courierName : undefined,
-      awbCode: awbCode !== undefined ? awbCode : undefined,
+      shipmentStatus:
+        nextShipmentStatus || undefined,
+
+      courierId:
+        courierId !== undefined
+          ? courierId
+          : undefined,
+
+      courierName:
+        courierName !== undefined
+          ? courierName
+          : undefined,
+
+      awbCode:
+        awbCode !== undefined
+          ? awbCode
+          : undefined,
+
       pickupTokenNumber:
-        pickupTokenNumber !== undefined ? pickupTokenNumber : undefined,
-      assignedAt: assignedAt !== undefined ? assignedAt : undefined,
+        pickupTokenNumber !== undefined
+          ? pickupTokenNumber
+          : undefined,
+
+      assignedAt:
+        assignedAt !== undefined
+          ? assignedAt
+          : undefined,
+
       shiprocketOrderId:
-        shiprocketOrderId !== undefined ? shiprocketOrderId : undefined,
-      shipmentId: shipmentId !== undefined ? shipmentId : undefined,
+        shiprocketOrderId !== undefined
+          ? shiprocketOrderId
+          : undefined,
+
+      shipmentId:
+        shipmentId !== undefined
+          ? shipmentId
+          : undefined,
     },
   });
 
-  if (nextShipmentStatus || activity || location || scanTimestamp) {
+  if (
+    nextShipmentStatus ||
+    activity ||
+    location ||
+    scanTimestamp
+  ) {
     await appendTrackingEventWithClient(db, {
       shipmentDbId,
-      status: nextShipmentStatus || "Unknown",
-      activity: activity || nextShipmentStatus || "Tracking update",
+      status:
+        nextShipmentStatus ||
+        "Unknown",
+
+      activity:
+        activity ||
+        nextShipmentStatus ||
+        "Tracking update",
+
       location,
       scanTimestamp,
     });
   }
 
-  await emitOrderEvent("shipment.updated", {
-    shipmentDbId,
-    orderId: shipment.orderId,
-    shipmentStatus: nextShipmentStatus,
-  });
+  /* =====================================
+     SYNC ORDER STATUS
+  ===================================== */
+
+  if (
+    shipment.orderId &&
+    nextShipmentStatus
+  ) {
+    const nextOrderStatus =
+      SHIPMENT_TO_ORDER_STATUS[
+        nextShipmentStatus
+      ];
+
+    if (nextOrderStatus) {
+      const order =
+        await db.order.findUnique({
+          where: {
+            id: shipment.orderId,
+          },
+        });
+
+      if (order) {
+        const currentPriority =
+          ORDER_STATUS_PRIORITY[
+            order.status
+          ] ?? 0;
+
+        const nextPriority =
+          ORDER_STATUS_PRIORITY[
+            nextOrderStatus
+          ] ?? 0;
+
+        const terminalStatuses =
+          new Set([
+            "Delivered",
+            "Cancelled",
+            "Returned",
+          ]);
+
+        const isCurrentTerminal =
+          terminalStatuses.has(
+            order.status
+          );
+
+        if (
+          !isCurrentTerminal &&
+          nextPriority >=
+            currentPriority
+        ) {
+          await db.order.update({
+            where: {
+              id: shipment.orderId,
+            },
+            data: {
+              status:
+                nextOrderStatus,
+            },
+          });
+        }
+      }
+    }
+  }
+
+  await emitOrderEvent(
+    "shipment.updated",
+    {
+      shipmentDbId,
+      orderId:
+        shipment.orderId,
+      shipmentStatus:
+        nextShipmentStatus,
+    }
+  );
 
   return updatedShipment;
 }
