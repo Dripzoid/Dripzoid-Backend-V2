@@ -2,6 +2,7 @@
 import axios from "axios";
 import { PrismaClient } from "@prisma/client";
 import { SHIPROCKET_STATUS_MAP,SHIPMENT_TO_ORDER_STATUS, } from "./shiprocket.constants.js";
+import { cancelOrderService } from "../../modules/orders/order.service.js";
 
 /**
  * If your project already exports a shared prisma client,
@@ -1488,47 +1489,43 @@ export async function cancelShipment(shiprocketOrderId) {
   });
 }
 
+
+
 export async function cancelShipmentForShipment(shipmentDbId) {
   if (!shipmentDbId) {
     throw new Error("shipmentDbId is required");
   }
 
-  const shipment = await findShipment(shipmentDbId);
+  const shipment = await findShipment(shipmentDbId, {
+    order: true,
+  });
 
   if (!shipment) {
     throw new Error("Shipment not found");
   }
 
   const trackingId = getTrackingId(shipment);
+
+  // Cancel in Shiprocket first
   const response = await cancelShipment(trackingId);
 
-  await prisma.$transaction(async (tx) => {
-    await tx.shipment.update({
-      where: { id: shipment.id },
-      data: {
-        shipmentStatus: normalizeShiprocketStatus("CANCELED"),
-      },
-    });
+  // Already cancelled locally
+  if (
+    shipment.order &&
+    String(shipment.order.status).toLowerCase() ===
+      "cancelled"
+  ) {
+    return response;
+  }
 
-    await tx.order.update({
-      where: { id: shipment.orderId },
-      data: {
-        status: normalizeShiprocketStatus("CANCELED"),
-      },
-    });
-
-    await appendTrackingEventWithClient(tx, {
-      shipmentDbId: shipment.id,
-      status: normalizeShiprocketStatus("CANCELED"),
-      activity: "Shipment cancelled",
-      location: "System",
-      scanTimestamp: new Date(),
-    });
-  });
+  // Reuse existing cancellation flow
+  await cancelOrderService(
+    shipment.order.userId,
+    shipment.orderId
+  );
 
   return response;
 }
-
 /* =====================================================
    NEW DB-LEVEL SHIPMENT UPDATE / TRACKING HELPERS
 ===================================================== */
