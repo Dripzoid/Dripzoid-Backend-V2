@@ -40,8 +40,7 @@ async function buildOrderPayload(orderId) {
         order.orderNumber,
 
       order_url:
-       order_url:
-  `${process.env.CLIENT_URL}/order-details/${order.id}`,
+        `${process.env.CLIENT_URL}/order-details/${order.id}`,
 
       courier_name:
         order.shipment?.courierName,
