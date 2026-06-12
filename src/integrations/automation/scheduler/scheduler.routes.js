@@ -3,7 +3,7 @@ import express from "express";
 import {
   getPendingScheduledTasks,
   updateScheduledTask,
-  createAutomationLog,
+  getAutomationEventById,
 } from "./scheduler.controller.js";
 
 import { verifyInternalKey }
@@ -14,18 +14,17 @@ const router = express.Router();
 router.use(verifyInternalKey);
 
 router.get(
-  "/scheduled-tasks/pending",
-  getPendingScheduledTasks
+  "/automation-events/pending",
+  getPendingAutomationEvents
+);
+
+router.get(
+  "/automation-events/:id",
+  getAutomationEventById
 );
 
 router.patch(
-  "/scheduled-tasks/:id",
-  updateScheduledTask
+  "/automation-events/:id",
+  updateAutomationEvent
 );
-
-router.post(
-  "/automation-logs",
-  createAutomationLog
-);
-
 export default router;
