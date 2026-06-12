@@ -65,19 +65,43 @@ async function buildOrderPayload(orderId) {
   };
 }
 
+async function createAutomationEvent(
+  eventType,
+  payload
+) {
+  return prisma.automationEvent.create({
+    data: {
+      eventType,
+      payload,
+      source: "dripzoid-backend",
+      status: "pending",
+    },
+  });
+}
 
 async function queueEvent(
   eventType,
   payload
 ) {
-  try {
-    await triggerAutomationEvent(
+  const automationEvent =
+    await createAutomationEvent(
       eventType,
       payload
     );
 
+  try {
+    await triggerAutomationEvent(
+      eventType,
+      {
+        automationEventId:
+          automationEvent.id,
+        ...payload,
+      }
+    );
+
     console.log(
-      `✅ ${eventType} queued`
+      `✅ ${eventType} queued`,
+      automationEvent.id
     );
 
     return true;
@@ -89,21 +113,14 @@ async function queueEvent(
     );
 
     try {
-      await prisma.scheduledEvent.create({
+      await prisma.automationEvent.update({
+        where: {
+          id: automationEvent.id,
+        },
         data: {
-          eventType,
-
-          payload,
-
-          status: "PENDING",
-
-          retryCount: 0,
-
-          nextRunAt: new Date(
-            Date.now() +
-              5 * 60 * 1000
-          ), // retry after 5 min
-
+          retryCount: {
+            increment: 1,
+          },
           lastError:
             error?.response?.data
               ? JSON.stringify(
@@ -112,14 +129,10 @@ async function queueEvent(
               : error.message,
         },
       });
-
-      console.log(
-        `📅 ${eventType} added to retry queue`
-      );
-    } catch (dbError) {
+    } catch (updateError) {
       console.error(
-        `❌ Failed to create ScheduledEvent`,
-        dbError.message
+        "Failed to update automation event",
+        updateError.message
       );
     }
 
@@ -141,9 +154,7 @@ export async function queueOrderPackedEvent(
       ...payload,
 
       packed_date:
-        new Date().toLocaleDateString(
-          "en-IN"
-        ),
+        new Date().toISOString(),
     }
   );
 }
@@ -187,9 +198,7 @@ export async function queueOrderDeliveredEvent(
       ...payload,
 
       delivery_date:
-        new Date().toLocaleDateString(
-          "en-IN"
-        ),
+        new Date().toISOString(),
     }
   );
 }
@@ -255,9 +264,7 @@ export async function queueReturnReceivedEvent({
         refundAmount,
 
       received_date:
-        new Date().toLocaleDateString(
-          "en-IN"
-        ),
+        new Date().toISOString(),
     }
   );
 }
