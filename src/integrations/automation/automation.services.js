@@ -40,7 +40,8 @@ async function buildOrderPayload(orderId) {
         order.orderNumber,
 
       order_url:
-        `${process.env.CLIENT_URL}/orders/${order.id}`,
+       order_url:
+  `${process.env.CLIENT_URL}/order-details/${order.id}`,
 
       courier_name:
         order.shipment?.courierName,
@@ -65,43 +66,18 @@ async function buildOrderPayload(orderId) {
   };
 }
 
-async function createAutomationEvent(
-  eventType,
-  payload
-) {
-  return prisma.automationEvent.create({
-    data: {
-      eventType,
-      payload,
-      source: "dripzoid-backend",
-      status: "pending",
-    },
-  });
-}
-
 async function queueEvent(
   eventType,
   payload
 ) {
-  const automationEvent =
-    await createAutomationEvent(
+  try {
+    await triggerAutomationEvent(
       eventType,
       payload
     );
 
-  try {
-    await triggerAutomationEvent(
-      eventType,
-      {
-        automationEventId:
-          automationEvent.id,
-        ...payload,
-      }
-    );
-
     console.log(
-      `✅ ${eventType} queued`,
-      automationEvent.id
+      `✅ ${eventType} queued`
     );
 
     return true;
@@ -111,30 +87,6 @@ async function queueEvent(
       error?.response?.data ||
         error.message
     );
-
-    try {
-      await prisma.automationEvent.update({
-        where: {
-          id: automationEvent.id,
-        },
-        data: {
-          retryCount: {
-            increment: 1,
-          },
-          lastError:
-            error?.response?.data
-              ? JSON.stringify(
-                  error.response.data
-                )
-              : error.message,
-        },
-      });
-    } catch (updateError) {
-      console.error(
-        "Failed to update automation event",
-        updateError.message
-      );
-    }
 
     return false;
   }
