@@ -240,7 +240,66 @@ function extractAvailableCouriers(response) {
     response?.data?.couriers ||
     response?.couriers ||
     []
-  );
+  );function extractShiprocketIds(response = {}) {
+  return {
+    shiprocketOrderId: asString(
+      pickFirst(
+        response?.order_id,
+        response?.orderId,
+        response?.data?.order_id,
+        response?.data?.orderId,
+        response?.payload?.order_id,
+        response?.payload?.orderId,
+
+        // AWB API response
+        response?.response?.data?.order_id,
+        response?.response?.data?.orderId
+      )
+    ),
+
+    shipmentId: asString(
+      pickFirst(
+        response?.shipment_id,
+        response?.shipmentId,
+        response?.data?.shipment_id,
+        response?.data?.shipmentId,
+        response?.payload?.shipment_id,
+        response?.payload?.shipmentId,
+
+        // AWB API response
+        response?.response?.data?.shipment_id,
+        response?.response?.data?.shipmentId
+      )
+    ),
+
+    awbCode: asString(
+      pickFirst(
+        response?.awb_code,
+        response?.awbCode,
+        response?.data?.awb_code,
+        response?.data?.awbCode,
+        response?.result?.awb_code,
+        response?.result?.awbCode,
+
+        // AWB API response
+        response?.response?.data?.awb_code,
+        response?.response?.data?.awbCode
+      )
+    ),
+
+    pickupTokenNumber: asString(
+      pickFirst(
+        response?.pickup_token_number,
+        response?.pickupTokenNumber,
+        response?.data?.pickup_token_number,
+        response?.data?.pickupTokenNumber,
+
+        response?.response?.data?.pickup_token_number,
+        response?.response?.data?.pickupTokenNumber
+      )
+    ),
+  };
+}
 }
 
 function extractTrackingActivities(response) {
