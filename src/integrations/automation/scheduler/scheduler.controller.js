@@ -1,62 +1,41 @@
 import * as schedulerService
   from "./scheduler.service.js";
 
-export async function getPendingScheduledTasks(
+export async function getPendingAutomationEvents(
   req,
   res,
   next
 ) {
   try {
-    const tasks =
+    const events =
       await schedulerService
-        .getPendingScheduledTasks();
+        .getPendingAutomationEvents();
 
     res.status(200).json({
       success: true,
-      tasks,
+      events,
     });
   } catch (error) {
     next(error);
   }
 }
 
-export async function updateScheduledTask(
+export async function updateAutomationEvent(
   req,
   res,
   next
 ) {
   try {
-    const task =
+    const event =
       await schedulerService
-        .updateScheduledTask(
+        .updateAutomationEvent(
           req.params.id,
           req.body
         );
 
     res.status(200).json({
       success: true,
-      task,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
-
-export async function createAutomationLog(
-  req,
-  res,
-  next
-) {
-  try {
-    const log =
-      await schedulerService
-        .createAutomationLog(
-          req.body
-        );
-
-    res.status(201).json({
-      success: true,
-      log,
+      event,
     });
   } catch (error) {
     next(error);
