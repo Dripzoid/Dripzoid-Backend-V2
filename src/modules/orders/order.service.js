@@ -1,6 +1,118 @@
 import prisma from "../../lib/prisma.js";
 import { parseImages } from "../products/product.utils.js";
 
+
+import { triggerAutomationEvent } from "../../integrations/automation/automation.service.js";
+
+import { EVENT_TYPES } from "../../config/eventTypes.js";
+
+async function queueOrderCancelledEvent({
+  order,
+  userId,
+}) {
+  try {
+    const user =
+      await prisma.user.findUnique({
+        where: {
+          id: userId,
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      });
+
+    if (!user) {
+      throw new Error(
+        `User not found: ${userId}`
+      );
+    }
+
+    const payload = {
+      customer_name:
+        user.name || "Customer",
+
+      email: user.email,
+
+      user_id: user.id,
+
+      order_id: order.id,
+
+      order_number:
+        order.orderNumber,
+
+      cancellation_date:
+        new Date().toISOString(),
+
+      payment_method:
+        order.paymentMethod ||
+
+        "N/A",
+
+      order_url: `${process.env.CLIENT_URL}/order-details/${order.id}`,
+    };
+
+    console.log(
+      "🚀 Triggering ORDER_CANCELLED automation..."
+    );
+
+    console.log(
+      JSON.stringify(
+        payload,
+        null,
+        2
+      )
+    );
+
+    await triggerAutomationEvent(
+      EVENT_TYPES.ORDER_CANCELLED,
+      payload
+    );
+
+    console.log(
+      "✅ ORDER_CANCELLED automation triggered"
+    );
+  } catch (error) {
+    console.error(
+      "❌ ORDER_CANCELLED automation failed:",
+      error.message
+    );
+
+    try {
+      await prisma.scheduledTask.create({
+        data: {
+          taskType:
+            "RETRY_AUTOMATION_EVENT",
+
+          payload: {
+            eventType:
+              EVENT_TYPES.ORDER_CANCELLED,
+
+            payload: {
+              orderId: order.id,
+              userId,
+            },
+          },
+
+          executeAt: new Date(
+            Date.now() +
+              5 * 60 * 1000
+          ),
+
+          lastError:
+            error.message,
+        },
+      });
+    } catch (scheduleError) {
+      console.error(
+        "Failed to create retry task:",
+        scheduleError.message
+      );
+    }
+  }
+}
+
 /* =====================================================
    🆔 GENERATE ORDER NUMBER
 ===================================================== */
@@ -623,19 +735,25 @@ export async function cancelOrderService(userId, orderId) {
     throw new Error("Order not found");
   }
 
- const allowedStatuses = [
-  "pending",
-  "confirmed",
-  "packed",
-  "shipped",
-];
+  const allowedStatuses = [
+    "pending",
+    "confirmed",
+    "packed",
+    "shipped",
+  ];
 
-  if (!allowedStatuses.includes(String(order.status || "").toLowerCase())) {
+  if (
+    !allowedStatuses.includes(
+      String(order.status || "").toLowerCase()
+    )
+  ) {
     throw new Error("Order cannot be cancelled");
   }
 
+  let cancelledOrder;
+
   await prisma.$transaction(async (tx) => {
-    await tx.order.update({
+    cancelledOrder = await tx.order.update({
       where: {
         id: orderId,
       },
@@ -684,16 +802,37 @@ export async function cancelOrderService(userId, orderId) {
           id: item.productId,
         },
         data: {
-          stock: product.stock !== null ? product.stock + item.quantity : null,
-          sold: Math.max(0, (product.sold || 0) - item.quantity),
+          stock:
+            product.stock !== null
+              ? product.stock + item.quantity
+              : null,
+
+          sold: Math.max(
+            0,
+            (product.sold || 0) - item.quantity
+          ),
         },
       });
     }
   });
 
+  try {
+    await queueOrderCancelledEvent({
+      order: {
+        ...order,
+        ...cancelledOrder,
+      },
+      userId,
+    });
+  } catch (error) {
+    console.error(
+      "Failed to trigger ORDER_CANCELLED automation:",
+      error
+    );
+  }
+
   return true;
 }
-
 /* =====================================================
    🔁 REORDER
 ===================================================== */
