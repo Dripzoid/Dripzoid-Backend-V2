@@ -50,16 +50,18 @@ export const SHIPMENT_TO_ORDER_STATUS = {
 
   "In Transit": "Shipped",
 
-  "Out For Delivery": "Shipped",
+  "Out For Delivery": "Out For Delivery",
 
   "Delivered": "Delivered",
 
   "Cancelled": "Cancelled",
 
-  "RTO Initiated": "Returned",
-  "RTO In Transit": "Returned",
-  "RTO Delivered": "Returned",
+  // RTO → Cancelled
+  "RTO Initiated": "Cancelled",
+  "RTO In Transit": "Cancelled",
+  "RTO Delivered": "Cancelled",
 
+  // Customer Returns → Returned
   "Return Requested": "Returned",
   "Return Picked": "Returned",
   "Return Delivered": "Returned",
