@@ -1,35 +1,35 @@
 import prisma from "../../../lib/prisma.js";
 
-export async function getPendingScheduledTasks() {
-  return prisma.scheduledTask.findMany({
+/* =====================================================
+   GET PENDING AUTOMATION EVENTS
+===================================================== */
+
+export async function getPendingAutomationEvents() {
+  return prisma.automationEvent.findMany({
     where: {
       status: "pending",
-      executeAt: {
-        lte: new Date(),
+      retryCount: {
+        lt: 5,
       },
     },
     orderBy: {
-      executeAt: "asc",
+      createdAt: "asc",
     },
   });
 }
 
-export async function updateScheduledTask(
-  taskId,
+/* =====================================================
+   UPDATE AUTOMATION EVENT
+===================================================== */
+
+export async function updateAutomationEvent(
+  eventId,
   data
 ) {
-  return prisma.scheduledTask.update({
+  return prisma.automationEvent.update({
     where: {
-      id: taskId,
+      id: eventId,
     },
-    data,
-  });
-}
-
-export async function createAutomationLog(
-  data
-) {
-  return prisma.automationLog.create({
     data,
   });
 }
