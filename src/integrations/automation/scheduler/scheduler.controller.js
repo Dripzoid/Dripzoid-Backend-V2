@@ -41,3 +41,23 @@ export async function updateAutomationEvent(
     next(error);
   }
 }
+
+export async function getAutomationEventById(
+  req,
+  res,
+  next
+) {
+  try {
+    const event =
+      await schedulerService.getAutomationEventById(
+        req.params.id
+      );
+
+    res.status(200).json({
+      success: true,
+      event,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
