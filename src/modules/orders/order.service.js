@@ -910,8 +910,9 @@ export async function reorderService(userId, orderId) {
   ) {
     throw new Error(
       `Insufficient stock for size ${item.selectedSize}`
-    );
-  }
+        );
+      }
+    }
 }
 
 
