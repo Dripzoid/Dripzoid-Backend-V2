@@ -250,11 +250,28 @@ function shouldFireAutomation(previousStatus, nextStatus, statusesSet) {
   return !statusesSet.has(previousStatus);
 }
 
-async function safeQueueAutomation(queueFn, payload, label) {
+async function createAutomationEvent(eventType, payload) {
+  return prisma.automationEvent.create({
+    data: {
+      eventType,
+      payload,
+      status: "pending",
+    },
+  });
+}
+
+async function safeQueueAutomation(queueFn, payload, label, eventType) {
+  const event = await createAutomationEvent(eventType, payload);
+
   try {
-    await queueFn(payload);
+    await queueFn({
+      automationEventId: event.id,
+      ...payload,
+    });
+
+    console.log(`✅ ${label} queued`);
   } catch (error) {
-    console.error(`❌ ${label} automation failed:`, error?.message || error);
+    console.error(`❌ ${label} automation failed`, error?.message || error);
   }
 }
 
@@ -656,6 +673,7 @@ async function triggerShipmentAutomations({
           payload?.estimated_delivery_date
         ),
       },
+      "ORDER_SHIPPED",
       "ORDER_SHIPPED"
     );
   }
@@ -678,6 +696,7 @@ async function triggerShipmentAutomations({
         ),
         tracking_url: trackingUrl,
       },
+      "ORDER_OUT_FOR_DELIVERY",
       "ORDER_OUT_FOR_DELIVERY"
     );
   }
@@ -698,6 +717,7 @@ async function triggerShipmentAutomations({
         ),
         order_url: getOrderDetailsUrl(shipment),
       },
+      "ORDER_DELIVERED",
       "ORDER_DELIVERED"
     );
   }
@@ -715,6 +735,7 @@ async function triggerShipmentAutomations({
         ...basePayload,
         cancelled_date: new Date().toISOString(),
       },
+      "ORDER_CANCELLED",
       "ORDER_CANCELLED"
     );
   }
@@ -733,6 +754,7 @@ async function triggerShipmentAutomations({
         return_date: new Date().toISOString(),
         awb_number: awbCode || shipment.awbCode || null,
       },
+      "ORDER_RETURNED",
       "ORDER_RETURNED"
     );
   }
@@ -817,27 +839,10 @@ export async function createShipmentForOrder(orderId, shiprocketPayload) {
   };
 }
 
-export async function findShipment(
-  identifier,
-  include = {}
-) {
-  const value = String(identifier);
-
-  const shipmentByShipmentId =
-    await prisma.shipment.findUnique({
-      where: {
-        shipmentId: value,
-      },
-      include,
-    });
-
-  if (shipmentByShipmentId) {
-    return shipmentByShipmentId;
-  }
-
-  return prisma.shipment.findUnique({
+export async function findShipment(identifier, include = {}) {
+  return prisma.shipment.findFirst({
     where: {
-      id: value,
+      OR: [{ id: String(identifier) }, { shipmentId: String(identifier) }],
     },
     include,
   });
@@ -1018,6 +1023,7 @@ export async function requestPickupForShipment(shipmentDbId) {
         packed_date: new Date().toISOString(),
         order_url: getOrderDetailsUrl(shipment),
       },
+      "ORDER_PACKED",
       "ORDER_PACKED"
     );
   }
