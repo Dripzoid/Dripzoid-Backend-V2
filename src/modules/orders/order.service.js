@@ -623,7 +623,12 @@ export async function cancelOrderService(userId, orderId) {
     throw new Error("Order not found");
   }
 
-  const allowedStatuses = ["pending", "confirmed", "packed"];
+ const allowedStatuses = [
+  "pending",
+  "confirmed",
+  "packed",
+  "shipped",
+];
 
   if (!allowedStatuses.includes(String(order.status || "").toLowerCase())) {
     throw new Error("Order cannot be cancelled");
