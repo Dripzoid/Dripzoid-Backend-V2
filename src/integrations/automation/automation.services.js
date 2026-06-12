@@ -65,6 +65,7 @@ async function buildOrderPayload(orderId) {
   };
 }
 
+
 async function queueEvent(
   eventType,
   payload
@@ -78,14 +79,53 @@ async function queueEvent(
     console.log(
       `✅ ${eventType} queued`
     );
+
+    return true;
   } catch (error) {
     console.error(
       `❌ ${eventType} failed`,
       error?.response?.data ||
         error.message
     );
+
+    try {
+      await prisma.scheduledEvent.create({
+        data: {
+          eventType,
+
+          payload,
+
+          status: "PENDING",
+
+          retryCount: 0,
+
+          nextRunAt: new Date(
+            Date.now() +
+              5 * 60 * 1000
+          ), // retry after 5 min
+
+          lastError:
+            error?.response?.data
+              ? JSON.stringify(
+                  error.response.data
+                )
+              : error.message,
+        },
+      });
+
+      console.log(
+        `📅 ${eventType} added to retry queue`
+      );
+    } catch (dbError) {
+      console.error(
+        `❌ Failed to create ScheduledEvent`,
+        dbError.message
+      );
+    }
+
+    return false;
   }
-} 
+}
 
 export async function queueOrderPackedEvent(
   orderId
