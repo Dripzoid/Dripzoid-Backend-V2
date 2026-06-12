@@ -125,23 +125,50 @@ async function shiprocketRequest({
 
     return response.data;
   } catch (err) {
-    const status = err?.response?.status;
+  console.error(
+    "🚨 SHIPROCKET API ERROR"
+  );
 
-    if (status === 401 && retry) {
-      cachedToken = null;
-      tokenExpiry = null;
+  console.error(
+    "Endpoint:",
+    endpoint
+  );
 
-      return shiprocketRequest({
-        method,
-        endpoint,
-        data,
-        params,
-        retry: false,
-      });
-    }
+  console.error(
+    "Status:",
+    err?.response?.status
+  );
 
-    throw err;
+  console.error(
+    "Response:",
+    JSON.stringify(
+      err?.response?.data,
+      null,
+      2
+    )
+  );
+
+  const status =
+    err?.response?.status;
+
+  if (
+    status === 401 &&
+    retry
+  ) {
+    cachedToken = null;
+    tokenExpiry = null;
+
+    return shiprocketRequest({
+      method,
+      endpoint,
+      data,
+      params,
+      retry: false,
+    });
   }
+
+  throw err;
+}
 }
 
 /* =====================================================
