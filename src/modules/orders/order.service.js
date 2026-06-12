@@ -346,32 +346,35 @@ export async function createOrderService({
       }
 
       if (item.selectedSize) {
-       const productSize =
-  await tx.productSize.findFirst({
-    where: {
-      productId:
-        item.productId,
-      size:
-        item.selectedSize,
-    },
-    select: {
-      id: true,
-      stock: true,
-    },
-  });
-        if (
-  productSize.stock <
-  item.quantity
-) {
-  throw new Error(
-    `Insufficient stock for size ${item.selectedSize}`
-  );
+  const productSize =
+    await tx.productSize.findFirst({
+      where: {
+        productId: item.productId,
+        size: item.selectedSize,
+      },
+      select: {
+        id: true,
+        stock: true,
+      },
+    });
+
+  if (!productSize) {
+    throw new Error(
+      `Size ${item.selectedSize} not found`
+    );
+  }
+
+  if (
+    productSize.stock <
+    item.quantity
+  ) {
+    throw new Error(
+      `Insufficient stock for size ${item.selectedSize}`
+    );
+  }
 }
 
-        if (!productSize) {
-          throw new Error(`Size ${item.selectedSize} not found`);
-        }
-      }
+
 
       computedTotal += item.unitPrice * item.quantity;
     }
@@ -883,34 +886,34 @@ export async function reorderService(userId, orderId) {
       }
 
       if (item.selectedSize) {
-       const productSize =
-  await tx.productSize.findFirst({
-    where: {
-      productId:
-        item.productId,
-      size:
-        item.selectedSize,
-    },
-    select: {
-      id: true,
-      stock: true,
-    },
-  });
+  const productSize =
+    await tx.productSize.findFirst({
+      where: {
+        productId: item.productId,
+        size: item.selectedSize,
+      },
+      select: {
+        id: true,
+        stock: true,
+      },
+    });
 
-        if (
-  productSize.stock <
-  item.quantity
-) {
-  throw new Error(
-    `Insufficient stock for size ${item.selectedSize}`
-  );
+  if (!productSize) {
+    throw new Error(
+      `Size ${item.selectedSize} not found`
+    );
+  }
+
+  if (
+    productSize.stock <
+    item.quantity
+  ) {
+    throw new Error(
+      `Insufficient stock for size ${item.selectedSize}`
+    );
+  }
 }
 
-        if (!productSize) {
-          throw new Error(`Size ${item.selectedSize} not found`);
-        }
-      }
-    }
 
     const orderNumberPlaceholder = generateTemporaryOrderNumber();
 
