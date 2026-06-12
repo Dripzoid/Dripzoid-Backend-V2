@@ -38,3 +38,29 @@ export const SHIPROCKET_STATUS_MAP = {
 
   RETURN_DELIVERED: "Return Delivered",
 };
+
+export const SHIPMENT_TO_ORDER_STATUS = {
+  "Confirmed": "Confirmed",
+
+  "Packed": "Packed",
+
+  "AWB Assigned": "Packed",
+
+  "Shipped": "Shipped",
+
+  "In Transit": "Shipped",
+
+  "Out For Delivery": "Shipped",
+
+  "Delivered": "Delivered",
+
+  "Cancelled": "Cancelled",
+
+  "RTO Initiated": "Returned",
+  "RTO In Transit": "Returned",
+  "RTO Delivered": "Returned",
+
+  "Return Requested": "Returned",
+  "Return Picked": "Returned",
+  "Return Delivered": "Returned",
+};
