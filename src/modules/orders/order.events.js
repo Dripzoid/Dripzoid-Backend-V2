@@ -1,10 +1,12 @@
 import prisma from "../../lib/prisma.js";
 
-import { triggerAutomationEvent }
-  from "../../integrations/automation/automation.service.js";
+import {
+  triggerAutomationEvent,
+} from "../../integrations/automation/automation.service.js";
 
-import { EVENT_TYPES }
-  from "../../config/eventTypes.js";
+import {
+  EVENT_TYPES,
+} from "../../config/eventTypes.js";
 
 export async function queueOrderCreatedEvent({
   order,
@@ -88,7 +90,11 @@ export async function queueOrderCreatedEvent({
 
     console.log(
       "📦 Event Payload:",
-      JSON.stringify(payload, null, 2)
+      JSON.stringify(
+        payload,
+        null,
+        2
+      )
     );
 
     await triggerAutomationEvent(
@@ -100,6 +106,23 @@ export async function queueOrderCreatedEvent({
         ...payload,
       }
     );
+
+    // ✅ Mark event completed
+    await prisma.automationEvent.update({
+      where: {
+        id: automationEvent.id,
+      },
+      data: {
+        status:
+          "completed",
+
+        completedAt:
+          new Date(),
+
+        lastError:
+          null,
+      },
+    });
 
     console.log(
       "✅ ORDER_CREATED automation triggered",
@@ -153,6 +176,9 @@ export async function queueOrderCreatedEvent({
                     error.response.data
                   )
                 : error.message,
+
+            status:
+              "pending",
           },
         });
       } catch (updateError) {
