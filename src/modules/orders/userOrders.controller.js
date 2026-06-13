@@ -18,6 +18,8 @@ async function queueOrderCancelledEvent({
   order,
   userId,
 }) {
+  let automationEvent;
+
   try {
     const user =
       await prisma.user.findUnique({
@@ -55,31 +57,41 @@ async function queueOrderCancelledEvent({
 
       payment_method:
         order.paymentMethod ||
-
         "N/A",
 
-      order_url: `${process.env.CLIENT_URL}/order-details/${order.id}`,
+      order_url:
+        `${process.env.CLIENT_URL}/order-details/${order.id}`,
     };
 
-    console.log(
-      "🚀 Triggering ORDER_CANCELLED automation..."
-    );
+    automationEvent =
+      await prisma.automationEvent.create({
+        data: {
+          eventType:
+            EVENT_TYPES.ORDER_CANCELLED,
 
-    console.log(
-      JSON.stringify(
-        payload,
-        null,
-        2
-      )
-    );
+          payload,
+
+          source:
+            "dripzoid-backend",
+
+          status:
+            "pending",
+        },
+      });
 
     await triggerAutomationEvent(
       EVENT_TYPES.ORDER_CANCELLED,
-      payload
+      {
+        automationEventId:
+          automationEvent.id,
+
+        ...payload,
+      }
     );
 
     console.log(
-      "✅ ORDER_CANCELLED automation triggered"
+      "✅ ORDER_CANCELLED automation triggered",
+      automationEvent.id
     );
   } catch (error) {
     console.error(
@@ -87,40 +99,29 @@ async function queueOrderCancelledEvent({
       error.message
     );
 
-    try {
-      await prisma.scheduledTask.create({
-        data: {
-          taskType:
-            "RETRY_AUTOMATION_EVENT",
-
-          payload: {
-            eventType:
-              EVENT_TYPES.ORDER_CANCELLED,
-
-            payload: {
-              orderId: order.id,
-              userId,
-            },
+    if (automationEvent) {
+      try {
+        await prisma.automationEvent.update({
+          where: {
+            id: automationEvent.id,
           },
-
-          executeAt: new Date(
-            Date.now() +
-              5 * 60 * 1000
-          ),
-
-          lastError:
-            error.message,
-        },
-      });
-    } catch (scheduleError) {
-      console.error(
-        "Failed to create retry task:",
-        scheduleError.message
-      );
+          data: {
+            retryCount: {
+              increment: 1,
+            },
+            lastError:
+              error.message,
+          },
+        });
+      } catch (updateError) {
+        console.error(
+          "Failed to update automation event:",
+          updateError.message
+        );
+      }
     }
   }
 }
-
 /* =====================================================
    📦 GET ALL USER ORDERS
 ===================================================== */
