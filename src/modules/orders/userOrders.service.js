@@ -239,9 +239,9 @@ export async function cancelOrderService(
       },
 
       include: {
-  items: true,
-  shipment: true,
-},
+        items: true,
+        shipment: true,
+      },
     });
 
   if (!order) {
@@ -257,6 +257,7 @@ export async function cancelOrderService(
   const allowedStatuses = [
     "pending",
     "confirmed",
+    "packed",
   ];
 
   if (
@@ -276,18 +277,19 @@ export async function cancelOrderService(
   ========================= */
 
   if (
-  order.shipment
-    ?.shiprocketOrderId
-) {
+    order.shipment
+      ?.shiprocketOrderId
+  ) {
     try {
       await cancelShipment(
-  order.shipment
-    .shiprocketOrderId
-);
+        order.shipment
+          .shiprocketOrderId
+      );
 
       console.log(
         "✅ Shiprocket order cancelled:",
-        order.shiprocketOrderId
+        order.shipment
+          .shiprocketOrderId
       );
     } catch (error) {
       console.error(
@@ -322,37 +324,42 @@ export async function cancelOrderService(
             "Cancelled",
         },
       });
-      if (order.shipment) {
-  await tx.shipment.update({
-    where: {
-      orderId,
-    },
-
-    data: {
-      shipmentStatus:
-        "Cancelled",
-    },
-  });
-
-  await tx.shipmentTracking.create({
-    data: {
-      shipmentId:
-        order.shipment.id,
-
-      status:
-        "Cancelled",
-
-      activity:
-        "Order cancelled by user",
-
-      scanTimestamp:
-        new Date(),
-    },
-  });
-}
 
       /* =====================
-         RESTORE STOCK
+         UPDATE SHIPMENT
+      ===================== */
+
+      if (order.shipment) {
+        await tx.shipment.update({
+          where: {
+            orderId,
+          },
+
+          data: {
+            shipmentStatus:
+              "Cancelled",
+          },
+        });
+
+        await tx.shipmentTracking.create({
+          data: {
+            shipmentId:
+              order.shipment.id,
+
+            status:
+              "Cancelled",
+
+            activity:
+              "Order cancelled by user",
+
+            scanTimestamp:
+              new Date(),
+          },
+        });
+      }
+
+      /* =====================
+         RESTORE INVENTORY
       ===================== */
 
       for (const item of order.items) {
@@ -364,6 +371,7 @@ export async function cancelOrderService(
             },
 
             select: {
+              id: true,
               stock: true,
               sold: true,
             },
@@ -396,26 +404,55 @@ export async function cancelOrderService(
               ),
           },
         });
+
+        /* =====================
+           RESTORE SIZE STOCK
+        ===================== */
+
+        if (
+          item.selectedSize
+        ) {
+          await tx.productSize.updateMany({
+            where: {
+              productId:
+                item.productId,
+
+              size:
+                item.selectedSize,
+            },
+
+            data: {
+              stock: {
+                increment:
+                  item.quantity,
+              },
+            },
+          });
+        }
       }
     }
   );
-const updatedOrder =
-  await prisma.order.findUnique({
-    where: {
-      id: orderId,
-    },
 
-    select: {
-      id: true,
-      orderNumber: true,
-      paymentMethod: true,
-      status: true,
-    },
-  });
+  /* =========================
+     FETCH UPDATED ORDER
+  ========================= */
 
-return updatedOrder;
+  const updatedOrder =
+    await prisma.order.findUnique({
+      where: {
+        id: orderId,
+      },
+
+      select: {
+        id: true,
+        orderNumber: true,
+        paymentMethod: true,
+        status: true,
+      },
+    });
+
+  return updatedOrder;
 }
-
 /* =====================================================
    🔁 REORDER
 ===================================================== */
