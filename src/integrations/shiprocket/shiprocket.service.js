@@ -1,6 +1,6 @@
 // src/services/shipping.service.js
 import axios from "axios";
-import { PrismaClient } from "@prisma/client";
+import prisma from "../../lib/prisma.js";
 import {
   SHIPROCKET_STATUS_MAP,
   SHIPMENT_TO_ORDER_STATUS,
@@ -16,17 +16,6 @@ import {
   queueOrderCancelledEvent,
   queueOrderReturnedEvent,
 } from "../automation/automation.services.js";
-
-
-const prisma =
-  globalThis.prisma ||
-  new PrismaClient({
-    log: ["error", "warn"],
-  });
-
-if (process.env.NODE_ENV !== "production") {
-  globalThis.prisma = prisma;
-}
 
 const BASE_URL = "https://apiv2.shiprocket.in/v1/external";
 
