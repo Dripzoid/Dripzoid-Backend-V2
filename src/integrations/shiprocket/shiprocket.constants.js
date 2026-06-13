@@ -3,7 +3,7 @@ export const SHIPROCKET_STATUS_MAP = {
   NEW: "Confirmed",
 
   // Pickup requested/generated
-  PICKUP_GENERATED: "Packed",
+  PICKUP_GENERATED: "Pickup Scheduled",
 
   // Optional internal status
   AWB_ASSIGNED: "AWB Assigned",
@@ -41,8 +41,6 @@ export const SHIPROCKET_STATUS_MAP = {
 
 export const SHIPMENT_TO_ORDER_STATUS = {
   "Confirmed": "Confirmed",
-
-  "Packed": "Packed",
 
   "AWB Assigned": "Packed",
 
