@@ -37,6 +37,7 @@ export async function processShiprocketWebhook(payload) {
     payload?.event_status ||
     payload?.tracking_status;
 
+  // Store webhook for audit/debugging
   const webhookEvent =
     await prisma.shipmentWebhookEvent.create({
       data: {
@@ -63,9 +64,7 @@ export async function processShiprocketWebhook(payload) {
     shipment =
       await prisma.shipment.findUnique({
         where: {
-          shipmentId: String(
-            shipmentRefId
-          ),
+          shipmentId: String(shipmentRefId),
         },
         include: {
           order: true,
@@ -74,17 +73,13 @@ export async function processShiprocketWebhook(payload) {
   }
 
   // 2. Lookup by Shiprocket Order ID
-  if (
-    !shipment &&
-    shiprocketOrderId
-  ) {
+  if (!shipment && shiprocketOrderId) {
     shipment =
       await prisma.shipment.findFirst({
         where: {
-          shiprocketOrderId:
-            String(
-              shiprocketOrderId
-            ),
+          shiprocketOrderId: String(
+            shiprocketOrderId
+          ),
         },
         include: {
           order: true,
@@ -97,9 +92,7 @@ export async function processShiprocketWebhook(payload) {
     shipment =
       await prisma.shipment.findFirst({
         where: {
-          awbCode: String(
-            awbCode
-          ),
+          awbCode: String(awbCode),
         },
         include: {
           order: true,
@@ -120,8 +113,7 @@ export async function processShiprocketWebhook(payload) {
     return {
       success: false,
       reason: "Shipment not found",
-      webhookEventId:
-        webhookEvent.id,
+      webhookEventId: webhookEvent.id,
     };
   }
 
@@ -135,26 +127,21 @@ export async function processShiprocketWebhook(payload) {
 
   if (
     order &&
-    isOrderTerminalStatus(
-      order.status
-    )
+    isOrderTerminalStatus(order.status)
   ) {
     return {
       success: true,
       skipped: true,
       reason: `Order already in terminal state: ${order.status}`,
-      webhookEventId:
-        webhookEvent.id,
+      webhookEventId: webhookEvent.id,
     };
   }
 
   const updatedShipment =
     await updateShipmentStatus({
-      shipmentDbId:
-        shipment.id,
+      shipmentDbId: shipment.id,
 
-      shipmentStatus:
-        rawStatus,
+      shipmentStatus: rawStatus,
 
       activity:
         payload?.activity ||
@@ -186,21 +173,10 @@ export async function processShiprocketWebhook(payload) {
         payload?.pickup_token_number,
     });
 
-  await prisma.shipmentWebhookEvent.update({
-    where: {
-      id: webhookEvent.id,
-    },
-    data: {
-      processed: true,
-      processedAt: new Date(),
-    },
-  });
-
   return {
     success: true,
     shipment: updatedShipment,
     orderId: shipment.orderId,
-    webhookEventId:
-      webhookEvent.id,
+    webhookEventId: webhookEvent.id,
   };
 }
