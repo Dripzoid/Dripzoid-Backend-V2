@@ -450,6 +450,11 @@ export async function cancelOrderService(
         status: true,
       },
     });
+  if (!updatedOrder) {
+  throw new Error(
+    "Cancelled order not found"
+  );
+}
 
   return updatedOrder;
 }
