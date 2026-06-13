@@ -80,19 +80,35 @@ async function queueOrderCancelledEvent({
       });
 
     await triggerAutomationEvent(
-      EVENT_TYPES.ORDER_CANCELLED,
-      {
-        automationEventId:
-          automationEvent.id,
+  EVENT_TYPES.ORDER_CANCELLED,
+  {
+    automationEventId:
+      automationEvent.id,
 
-        ...payload,
-      }
-    );
+    ...payload,
+  }
+);
 
-    console.log(
-      "✅ ORDER_CANCELLED automation triggered",
-      automationEvent.id
-    );
+await prisma.automationEvent.update({
+  where: {
+    id: automationEvent.id,
+  },
+  data: {
+    status:
+      "completed",
+
+    completedAt:
+      new Date(),
+
+    lastError:
+      null,
+  },
+});
+
+console.log(
+  "✅ ORDER_CANCELLED automation triggered",
+  automationEvent.id
+);
   } catch (error) {
     console.error(
       "❌ ORDER_CANCELLED automation failed:",
@@ -105,13 +121,21 @@ async function queueOrderCancelledEvent({
           where: {
             id: automationEvent.id,
           },
-          data: {
-            retryCount: {
-              increment: 1,
-            },
-            lastError:
-              error.message,
-          },
+         data: {
+  retryCount: {
+    increment: 1,
+  },
+
+  status:
+    "pending",
+
+  lastError:
+    error?.response?.data
+      ? JSON.stringify(
+          error.response.data
+        )
+      : error.message,
+},
         });
       } catch (updateError) {
         console.error(
