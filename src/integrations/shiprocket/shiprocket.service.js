@@ -5,6 +5,8 @@ import {
   SHIPROCKET_STATUS_MAP,
   SHIPMENT_TO_ORDER_STATUS,
 } from "./shiprocket.constants.js";
+
+
 import { cancelOrderService } from "../../modules/orders/order.service.js";
 import {
   queueOrderPackedEvent,
@@ -15,10 +17,7 @@ import {
   queueOrderReturnedEvent,
 } from "../automation/automation.services.js";
 
-/**
- * If your project already exports a shared prisma client,
- * replace this block with that import.
- */
+
 const prisma =
   globalThis.prisma ||
   new PrismaClient({
@@ -42,8 +41,20 @@ const TERMINAL_SHIPMENT_STATUSES = new Set([
   "Delivered",
   "Cancelled",
   "Returned",
-  "RTO Delivered",
 ]);
+
+const SHIPMENT_STATUS_PRIORITY = {
+  Confirmed: 1,
+  "AWB Assigned": 2,
+  "Pickup Scheduled": 3,
+  Shipped: 4,
+  "In Transit": 5,
+  "Out For Delivery": 6,
+  Delivered: 7,
+
+  Cancelled: 100,
+  Returned: 100,
+};
 
 const SHIPPED_AUTOMATION_STATUSES = new Set(["Shipped", "In Transit"]);
 const OUT_FOR_DELIVERY_AUTOMATION_STATUSES = new Set(["Out For Delivery"]);
@@ -125,50 +136,31 @@ async function shiprocketRequest({
 
     return response.data;
   } catch (err) {
-  console.error(
-    "🚨 SHIPROCKET API ERROR"
-  );
+    console.error("🚨 SHIPROCKET API ERROR");
+    console.error("Endpoint:", endpoint);
+    console.error("Status:", err?.response?.status);
+    console.error(
+      "Response:",
+      JSON.stringify(err?.response?.data, null, 2)
+    );
 
-  console.error(
-    "Endpoint:",
-    endpoint
-  );
+    const status = err?.response?.status;
 
-  console.error(
-    "Status:",
-    err?.response?.status
-  );
+    if (status === 401 && retry) {
+      cachedToken = null;
+      tokenExpiry = null;
 
-  console.error(
-    "Response:",
-    JSON.stringify(
-      err?.response?.data,
-      null,
-      2
-    )
-  );
+      return shiprocketRequest({
+        method,
+        endpoint,
+        data,
+        params,
+        retry: false,
+      });
+    }
 
-  const status =
-    err?.response?.status;
-
-  if (
-    status === 401 &&
-    retry
-  ) {
-    cachedToken = null;
-    tokenExpiry = null;
-
-    return shiprocketRequest({
-      method,
-      endpoint,
-      data,
-      params,
-      retry: false,
-    });
+    throw err;
   }
-
-  throw err;
-}
 }
 
 /* =====================================================
@@ -226,6 +218,21 @@ export function isOrderTerminalStatus(status) {
 
 function isRtoShipmentStatus(status) {
   return ["RTO Initiated", "RTO In Transit", "RTO Delivered"].includes(status);
+}
+
+function getProgressedShipmentStatus(currentStatus, incomingStatus) {
+  if (!incomingStatus) {
+    return currentStatus;
+  }
+
+  const currentRank = SHIPMENT_STATUS_PRIORITY[currentStatus] || 0;
+  const incomingRank = SHIPMENT_STATUS_PRIORITY[incomingStatus] || 0;
+  if (
+  !SHIPMENT_STATUS_PRIORITY[incomingStatus]
+) {
+  return currentStatus;
+}
+  return incomingRank >= currentRank ? incomingStatus : currentStatus;
 }
 
 function getShipmentExternalId(shipment) {
@@ -440,13 +447,23 @@ function normalizeTrackingEvent(evt) {
   };
 }
 
-function getMutableShipmentStatus(currentStatus, desiredStatus) {
-  if (!desiredStatus) return currentStatus || null;
-  if (TERMINAL_SHIPMENT_STATUSES.has(currentStatus)) return currentStatus;
-  return desiredStatus;
+function isPickupScheduledStatus(status) {
+  if (!status) return false;
+  const normalized = String(status)
+    .trim()
+    .toUpperCase()
+    .split(" ")
+    .join("_")
+    .split("-")
+    .join("_");
+  return normalized === "PICKUP_SCHEDULED" || normalized === "PICKUP_GENERATED";
 }
 
 function resolveNextOrderStatus(nextShipmentStatus) {
+  if (isPickupScheduledStatus(nextShipmentStatus)) {
+    return null;
+  }
+
   let nextOrderStatus = SHIPMENT_TO_ORDER_STATUS[nextShipmentStatus] || null;
 
   if (isRtoShipmentStatus(nextShipmentStatus)) {
@@ -607,9 +624,13 @@ async function updateShipmentStatusWithClient(
   }
 
   const previousShipmentStatus = shipment.shipmentStatus || null;
-  const nextShipmentStatus = shipmentStatus
+  const normalizedStatus = shipmentStatus
     ? normalizeShiprocketStatus(shipmentStatus)
     : shipment.shipmentStatus;
+  const nextShipmentStatus = getProgressedShipmentStatus(
+    previousShipmentStatus,
+    normalizedStatus
+  );
 
   const updatedShipment = await db.shipment.update({
     where: { id: shipmentDbId },
@@ -900,11 +921,26 @@ export async function assignAWBToShipment({ shipmentDbId, courierId }) {
   }
 
   const shipment = await findShipment(shipmentDbId, {
-    order: true,
+    order: {
+      include: {
+        user: true,
+      },
+    },
   });
 
   if (!shipment) {
     throw new Error("Shipment not found");
+  }
+
+  if (
+    shipment.shipmentStatus === "AWB Assigned" &&
+    shipment.awbCode
+  ) {
+    return {
+      success: true,
+      shipment,
+      shiprocketResponse: null,
+    };
   }
 
   const externalShipmentId = getShipmentExternalId(shipment);
@@ -936,8 +972,17 @@ export async function assignAWBToShipment({ shipmentDbId, courierId }) {
         awbCode: awbCode || shipment.awbCode,
         courierId: chosenCourierId,
         courierName: courierRecord?.name || shipment.courierName || null,
-        shipmentStatus: shipment.shipmentStatus,
+        shipmentStatus: "AWB Assigned",
         assignedAt: new Date(),
+      },
+    });
+
+    await tx.order.update({
+      where: {
+        id: shipment.orderId,
+      },
+      data: {
+        status: "Packed",
       },
     });
 
@@ -951,6 +996,21 @@ export async function assignAWBToShipment({ shipmentDbId, courierId }) {
 
     return next;
   });
+
+  await safeQueueAutomation(
+    queueOrderPackedEvent,
+    {
+      customer_name: shipment?.order?.user?.name || null,
+      email: shipment?.order?.user?.email || null,
+      user_id: shipment?.order?.userId || null,
+      order_id: shipment?.orderId || null,
+      order_number: shipment?.order?.orderNumber || null,
+      packed_date: new Date().toISOString(),
+      order_url: getOrderDetailsUrl(shipment),
+    },
+    "ORDER_PACKED",
+    "ORDER_PACKED"
+  );
 
   return {
     success: true,
@@ -1000,60 +1060,42 @@ export async function requestPickupForShipment(shipmentDbId) {
     throw new Error("No Shiprocket shipment id available for pickup request");
   }
 
-  const previousShipmentStatus = shipment.shipmentStatus || null;
-  const nextShipmentStatus = getMutableShipmentStatus(
-    shipment.shipmentStatus,
-    normalizeShiprocketStatus("PICKUP_GENERATED")
-  );
-
   const shiprocketResponse = await requestPickup(externalShipmentId);
   const { pickupTokenNumber } = extractShiprocketIds(shiprocketResponse);
 
-  const updatedShipment = await prisma.$transaction(async (tx) => {
-    const next = await tx.shipment.update({
-      where: { id: shipment.id },
-      data: {
-        pickupScheduledAt: new Date(),
-        pickupTokenNumber:
-          pickupTokenNumber ||
-          asString(
-            pickFirst(
-              shiprocketResponse?.pickup_token_number,
-              shiprocketResponse?.pickupToken,
-              shiprocketResponse?.token_number
-            )
-          ),
-        shipmentStatus: nextShipmentStatus,
-      },
-    });
+ const updatedShipment = await prisma.$transaction(async (tx) => {
+  const next = await tx.shipment.update({
+    where: { id: shipment.id },
+    data: {
+      shipmentStatus:
+        shipment.shipmentStatus === "Pickup Scheduled"
+        ? shipment.shipmentStatus
+        : "Pickup Scheduled",
 
-    await appendTrackingEventWithClient(tx, {
-      shipmentDbId: shipment.id,
-      status: normalizeShiprocketStatus("PICKUP_GENERATED"),
-      activity: "Pickup requested",
-      location: "System",
-      scanTimestamp: new Date(),
-    });
+      pickupScheduledAt: new Date(),
 
-    return next;
+      pickupTokenNumber:
+        pickupTokenNumber ||
+        asString(
+          pickFirst(
+            shiprocketResponse?.pickup_token_number,
+            shiprocketResponse?.pickupToken,
+            shiprocketResponse?.token_number
+          )
+        ),
+    },
   });
 
-  if (previousShipmentStatus !== nextShipmentStatus) {
-    await safeQueueAutomation(
-      queueOrderPackedEvent,
-      {
-        customer_name: shipment?.order?.user?.name || null,
-        email: shipment?.order?.user?.email || null,
-        user_id: shipment?.order?.userId || null,
-        order_id: shipment?.orderId || null,
-        order_number: shipment?.order?.orderNumber || null,
-        packed_date: new Date().toISOString(),
-        order_url: getOrderDetailsUrl(shipment),
-      },
-      "ORDER_PACKED",
-      "ORDER_PACKED"
-    );
-  }
+  await appendTrackingEventWithClient(tx, {
+    shipmentDbId: shipment.id,
+    status: "Pickup Scheduled",
+    activity: "Pickup scheduled",
+    location: "System",
+    scanTimestamp: new Date(),
+  });
+
+  return next;
+});
 
   return {
     success: true,
@@ -1464,8 +1506,12 @@ export async function syncShipmentTracking(shipmentDbId) {
     }
 
     if (latestEvent?.status) {
-      nextShipmentStatus =
+      const candidateStatus =
         normalizeShiprocketStatus(latestEvent.status) || previousShipmentStatus;
+      nextShipmentStatus = getProgressedShipmentStatus(
+        previousShipmentStatus,
+        candidateStatus
+      );
       const nextOrderStatus = resolveNextOrderStatus(nextShipmentStatus);
 
       updatedShipment = await tx.shipment.update({
