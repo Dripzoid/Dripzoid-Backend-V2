@@ -5,6 +5,7 @@ import prisma from "../../lib/prisma.js";
 import {
   updateShipmentStatus,
   isOrderTerminalStatus,
+  triggerShipmentAutomations,
 } from "../../integrations/shiprocket/shiprocket.service.js";
 
 export async function processShiprocketWebhook(payload) {
@@ -137,46 +138,78 @@ export async function processShiprocketWebhook(payload) {
     };
   }
 
-  const updatedShipment =
-    await updateShipmentStatus({
-      shipmentDbId: shipment.id,
+  const previousShipmentStatus =
+  shipment.shipmentStatus || null;
 
-      shipmentStatus: rawStatus,
+const updateResult =
+  await updateShipmentStatus({
+    shipmentDbId: shipment.id,
 
-      activity:
-        payload?.activity ||
-        payload?.note ||
-        payload?.details ||
-        rawStatus,
+    shipmentStatus: rawStatus,
 
-      location:
-        payload?.location ||
-        payload?.city ||
-        payload?.hub_name,
+    activity:
+      payload?.activity ||
+      payload?.note ||
+      payload?.details ||
+      rawStatus,
 
-      scanTimestamp:
-        payload?.scan_timestamp ||
-        payload?.scanTimestamp ||
-        payload?.current_timestamp ||
-        payload?.date,
+    location:
+      payload?.location ||
+      payload?.city ||
+      payload?.hub_name,
 
-      courierId:
-        payload?.courier_company_id ||
-        payload?.courier_id,
+    scanTimestamp:
+      payload?.scan_timestamp ||
+      payload?.scanTimestamp ||
+      payload?.current_timestamp ||
+      payload?.date,
 
-      courierName:
-        payload?.courier_name,
+    courierId:
+      payload?.courier_company_id ||
+      payload?.courier_id,
 
-      awbCode,
+    courierName:
+      payload?.courier_name,
 
-      pickupTokenNumber:
-        payload?.pickup_token_number,
-    });
+    awbCode,
 
-  return {
-    success: true,
-    shipment: updatedShipment,
-    orderId: shipment.orderId,
-    webhookEventId: webhookEvent.id,
-  };
+    pickupTokenNumber:
+      payload?.pickup_token_number,
+  });
+
+const nextShipmentStatus =
+  updateResult?.nextShipmentStatus;
+
+if (
+  previousShipmentStatus !==
+  nextShipmentStatus
+) {
+  await triggerShipmentAutomations({
+    shipment,
+    previousShipmentStatus,
+    nextShipmentStatus,
+
+    awbCode,
+
+    courierName:
+      payload?.courier_name,
+
+    scanTimestamp:
+      payload?.scan_timestamp ||
+      payload?.scanTimestamp ||
+      payload?.current_timestamp ||
+      payload?.date,
+
+    payload,
+  });
+}
+
+ return {
+  success: true,
+  shipment: updateResult.shipment,
+  previousShipmentStatus,
+  nextShipmentStatus,
+  orderId: shipment.orderId,
+  webhookEventId: webhookEvent.id,
+};
 }
