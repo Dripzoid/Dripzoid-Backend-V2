@@ -68,8 +68,12 @@ export async function processShiprocketWebhook(payload) {
           shipmentId: String(shipmentRefId),
         },
         include: {
-          order: true,
-        },
+  order: {
+    include: {
+      user: true,
+    },
+  },
+},
       });
   }
 
@@ -83,8 +87,12 @@ export async function processShiprocketWebhook(payload) {
           ),
         },
         include: {
-          order: true,
-        },
+  order: {
+    include: {
+      user: true,
+    },
+  },
+},
       });
   }
 
@@ -96,8 +104,12 @@ export async function processShiprocketWebhook(payload) {
           awbCode: String(awbCode),
         },
         include: {
-          order: true,
-        },
+  order: {
+    include: {
+      user: true,
+    },
+  },
+},
       });
   }
 
