@@ -675,7 +675,7 @@ function normalizeDeliveredDate(scanTimestamp, fallback = new Date().toISOString
   return String(scanTimestamp);
 }
 
-async function triggerShipmentAutomations({
+export async function triggerShipmentAutomations({
   shipment,
   previousShipmentStatus,
   nextShipmentStatus,
@@ -2002,6 +2002,7 @@ export default {
   getShipmentDetails,
   appendTrackingEvent,
   updateShipmentStatus,
+  triggerShipmentAutomations,
   isOrderTerminalStatus,
   getInvoiceUrl,
   downloadInvoiceForShipment,
