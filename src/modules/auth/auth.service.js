@@ -17,36 +17,53 @@ async function queueUserRegisteredEvent(user) {
     registered_at: new Date().toISOString(),
   };
 
+  const automationEvent =
+    await prisma.automationEvent.create({
+      data: {
+        eventType: EVENT_TYPES.USER_REGISTERED,
+        payload,
+        status: "pending",
+        retryCount: 0,
+      },
+    });
+
   try {
     await triggerAutomationEvent(
       EVENT_TYPES.USER_REGISTERED,
       payload
     );
+
+    await prisma.automationEvent.update({
+      where: {
+        id: automationEvent.id,
+      },
+      data: {
+        status: "completed",
+        processedAt: new Date(),
+        lastError: null,
+      },
+    });
   } catch (error) {
     console.error(
       "Automation USER_REGISTERED failed:",
       error.message
     );
 
-    try {
-      await prisma.scheduledTask.create({
-        data: {
-          taskType: "RETRY_AUTOMATION_EVENT",
-          payload: {
-            eventType: EVENT_TYPES.USER_REGISTERED,
-            payload,
-          },
-          executeAt: new Date(Date.now() + 5 * 60 * 1000),
-          lastError: error.message,
+    await prisma.automationEvent.update({
+      where: {
+        id: automationEvent.id,
+      },
+      data: {
+        retryCount: {
+          increment: 1,
         },
-      });
-    } catch (scheduleError) {
-      console.error(
-        "Failed to create retry task:",
-        scheduleError.message
-      );
-    }
+        lastError: error.message,
+        status: "pending",
+      },
+    });
   }
+
+  return automationEvent;
 }
 
 /* ======================================================
