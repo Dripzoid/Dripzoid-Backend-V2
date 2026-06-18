@@ -131,7 +131,14 @@ export async function registerUser({
      AUTOMATION EVENT
   ========================= */
 
+ try {
   await queueUserRegisteredEvent(user);
+} catch (error) {
+  console.error(
+    "Failed to queue USER_REGISTERED automation:",
+    error.message
+  );
+}
 
   return user;
 }
@@ -239,7 +246,14 @@ export async function handleGoogleAuth(profile) {
      AUTOMATION EVENT
   ========================= */
 
+ try {
   await queueUserRegisteredEvent(user);
+} catch (error) {
+  console.error(
+    "Failed to queue USER_REGISTERED automation:",
+    error.message
+  );
+}
 
   return user;
 }
