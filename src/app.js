@@ -73,6 +73,14 @@ app.get("/", (req, res) => {
    🚀 API ROUTES
 ===================================================== */
 
+app.get(
+  "/loaderio-2a0666c7eba53ab1698f28c2124462c8.txt",
+  (req, res) => {
+    res.type("text/plain");
+    res.send("loaderio-2a0666c7eba53ab1698f28c2124462c8");
+  }
+);
+
 app.use("/api", routes);
 
 /* =====================================================
