@@ -17,6 +17,7 @@ import {
   loginUser,
   handleGoogleAuth,
   resetUserPassword,
+  checkEmailExists,
 } from "./auth.service.js";
 
 const JWT_SECRET =
@@ -24,6 +25,43 @@ const JWT_SECRET =
 
 const CLIENT_URL =
   process.env.CLIENT_URL;
+
+/* ======================================================
+   CHECK EMAIL
+====================================================== */
+
+export const checkEmail = async (req, res) => {
+  try {
+    let { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
+
+    email = email.toLowerCase().trim();
+
+    const exists = await checkEmailExists(email);
+
+    return res.json({
+      success: true,
+      exists,
+      available: !exists,
+      message: exists
+        ? "Email already registered"
+        : "Email is available",
+    });
+  } catch (err) {
+    console.error("Check Email Error:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to check email",
+    });
+  }
+};
 
 /* ======================================================
    SESSION CREATION
