@@ -291,3 +291,22 @@ export async function resetUserPassword({
 
   return true;
 }
+
+/* ======================================================
+   CHECK EMAIL
+====================================================== */
+
+export async function checkEmailExists(email) {
+  const normalizedEmail = email.toLowerCase().trim();
+
+  const user = await prisma.user.findUnique({
+    where: {
+      email: normalizedEmail,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  return !!user;
+}
