@@ -8,6 +8,7 @@ import {
   getMe,
   logout,
   resetPassword,
+  checkEmail,
 } from "./auth.controller.js";
 
 import { protect } from "../../middlewares/auth.middleware.js";
@@ -50,6 +51,11 @@ router.get(
   "/me",
   protect,
   getMe
+);
+
+router.post(
+  "/check-email",
+  checkEmail
 );
 
 /* =========================
