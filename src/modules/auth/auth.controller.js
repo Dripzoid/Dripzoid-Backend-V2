@@ -13,11 +13,12 @@ import {
 } from "../../utils/activity.js";
 
 import {
-  registerUser,
-  loginUser,
-  handleGoogleAuth,
-  resetUserPassword,
-  checkEmailExists,
+    registerUser,
+    loginUser,
+    handleGoogleAuth,
+    handleGoogleMobile,
+    resetUserPassword,
+    checkEmailExists,
 } from "./auth.service.js";
 
 const JWT_SECRET =
@@ -656,4 +657,63 @@ export const logout = async (
         "Logout failed",
     });
   }
+};
+
+export const googleMobile = async (req, res) => {
+
+    try {
+
+        const { idToken } = req.body;
+
+        if (!idToken) {
+
+            return res.status(400).json({
+                success: false,
+                message: "Google ID token is required",
+            });
+
+        }
+
+        const user =
+            await handleGoogleMobile(idToken);
+
+        const sessionId =
+            await createSession(user, req);
+
+        await insertUserActivity(
+            user.id,
+            "Logged In (Google Mobile)"
+        );
+
+        const token =
+            generateToken(user, sessionId);
+
+        return res.json({
+
+            success: true,
+
+            message: "Google login successful",
+
+            token,
+
+            sessionId,
+
+            user,
+
+        });
+
+    } catch (err) {
+
+        console.error(err);
+
+        return res.status(401).json({
+
+            success: false,
+
+            message: err.message,
+
+        });
+
+    }
+
 };
