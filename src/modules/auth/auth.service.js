@@ -1,9 +1,15 @@
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
+import jwt from "jsonwebtoken";
+import { OAuth2Client } from "google-auth-library";
 
 import prisma from "../../lib/prisma.js";
 import { triggerAutomationEvent } from "../../integrations/automation/automation.service.js";
 import { EVENT_TYPES } from "../../config/eventTypes.js";
+
+const googleClient = new OAuth2Client(
+    process.env.GOOGLE_WEB_CLIENT_ID
+);
 
 /* ======================================================
    USER REGISTERED AUTOMATION HELPER
@@ -309,4 +315,58 @@ export async function checkEmailExists(email) {
   });
 
   return !!user;
+}
+
+export async function handleGoogleMobile(idToken) {
+
+    if (!idToken) {
+        throw new Error("Google ID token is required");
+    }
+
+    const ticket = await googleClient.verifyIdToken({
+        idToken,
+        audience: process.env.GOOGLE_WEB_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+
+    if (!payload) {
+        throw new Error("Invalid Google token");
+    }
+
+    const email = payload.email.toLowerCase().trim();
+    const name = payload.name || "Google User";
+
+    let user = await prisma.user.findUnique({
+        where: {
+            email,
+        },
+    });
+
+    if (!user) {
+
+        const randomPassword =
+            crypto.randomBytes(16).toString("hex");
+
+        const hashedPassword =
+            await bcrypt.hash(randomPassword, 10);
+
+        user = await prisma.user.create({
+            data: {
+                name,
+                email,
+                password: hashedPassword,
+                phone: "",
+                isAdmin: false,
+            },
+        });
+
+        try {
+            await queueUserRegisteredEvent(user);
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    return user;
 }
