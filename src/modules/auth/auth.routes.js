@@ -5,6 +5,7 @@ import {
   login,
   googleAuth,
   googleCallback,
+  googleMobile,
   getMe,
   logout,
   resetPassword,
@@ -74,6 +75,11 @@ router.post(
 router.post(
   "/logout",
   logout
+);
+
+router.post(
+  "/google/mobile",
+  googleMobile
 );
 
 export default router;
