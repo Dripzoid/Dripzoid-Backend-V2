@@ -120,7 +120,7 @@ async function queueOrderCancelledEvent({
    🆔 GENERATE ORDER NUMBER
 ===================================================== */
 
-function generateOrderNumber(orderId) {
+export function generateOrderNumber(orderId) {
   const now = new Date();
   const y = now.getFullYear();
   const m = String(now.getMonth() + 1).padStart(2, "0");
@@ -128,7 +128,7 @@ function generateOrderNumber(orderId) {
   return `DRIP-${y}${m}${d}-${orderId}`;
 }
 
-function generateTemporaryOrderNumber() {
+export function generateTemporaryOrderNumber() {
   const now = Date.now();
   const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
   return `TMP-${now}-${rand}`;
