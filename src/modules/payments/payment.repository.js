@@ -1,5 +1,11 @@
 // src/modules/payments/payment.repository.js
+
 import prisma from "../../lib/prisma.js";
+
+import {
+  generateOrderNumber,
+  generateTemporaryOrderNumber,
+} from "../orders/order.service.js";
 
 /* =====================================================
    HELPERS
@@ -20,7 +26,7 @@ function parseShippingAddress(shippingJson) {
 }
 
 /* =====================================================
-   💾 CREATE ORDER
+   💾 CREATE PAYMENT ORDER
    Initial status must be Pending
 ===================================================== */
 
@@ -30,18 +36,82 @@ export async function createPaymentOrder({
   totalAmount,
   status = "Pending",
 }) {
-  const shippingAddress = parseShippingAddress(shippingJson);
+  const shippingAddress =
+    parseShippingAddress(shippingJson);
+
+  /*
+   * Prisma requires orderNumber during creation.
+   *
+   * We cannot generate the final order number yet
+   * because the final format contains order.id.
+   *
+   * Therefore:
+   *
+   * 1. Generate temporary order number
+   * 2. Create order
+   * 3. Get generated order.id
+   * 4. Generate final DRIP-YYYYMMDD-orderId
+   * 5. Update order
+   */
+
+  const orderNumberPlaceholder =
+    generateTemporaryOrderNumber();
+
+  /* =================================================
+     STEP 1: CREATE PENDING ORDER
+  ================================================= */
 
   const order = await prisma.order.create({
     data: {
       userId,
+
+      orderNumber:
+        orderNumberPlaceholder,
+
       shippingAddress,
-      totalAmount: Number(totalAmount) || 0,
+
+      totalAmount:
+        Number(totalAmount) || 0,
+
       status,
     },
   });
 
-  return order.id;
+  /* =================================================
+     STEP 2: GENERATE FINAL ORDER NUMBER
+  ================================================= */
+
+  const finalOrderNumber =
+    generateOrderNumber(order.id);
+
+  /* =================================================
+     STEP 3: UPDATE ORDER NUMBER
+  ================================================= */
+
+  const updatedOrder =
+    await prisma.order.update({
+      where: {
+        id: order.id,
+      },
+
+      data: {
+        orderNumber:
+          finalOrderNumber,
+      },
+    });
+
+  /*
+   * Return the internal database order ID.
+   *
+   * payment.service.js uses this ID for:
+   * - OrderItem creation
+   * - Razorpay receipt
+   * - Razorpay notes
+   * - Payment verification
+   * - Shiprocket
+   */
+
+  return updatedOrder.id;
 }
 
 /* =====================================================
@@ -54,23 +124,35 @@ export async function insertOrderItem({
   quantity,
   unitPrice,
 }) {
-  const product = await prisma.product.findUnique({
-    where: { id: productId },
-  });
+  const product =
+    await prisma.product.findUnique({
+      where: {
+        id: productId,
+      },
+    });
 
   if (!product) {
-    throw new Error(`Product not found: ${productId}`);
+    throw new Error(
+      `Product not found: ${productId}`
+    );
   }
 
-  const qty = Number(quantity) || 1;
-  const price = Number(unitPrice) || 0;
+  const qty =
+    Number(quantity) || 1;
+
+  const price =
+    Number(unitPrice) || 0;
 
   return prisma.orderItem.create({
     data: {
       orderId,
+
       productId,
+
       quantity: qty,
+
       unitPrice: price,
+
       price: qty * price,
     },
   });
@@ -82,7 +164,9 @@ export async function insertOrderItem({
 
 export async function getOrderById(orderId) {
   return prisma.order.findUnique({
-    where: { id: orderId },
+    where: {
+      id: orderId,
+    },
   });
 }
 
@@ -91,8 +175,12 @@ export async function getOrderById(orderId) {
    Used for idempotency
 ===================================================== */
 
-export async function getOrderByPaymentId(paymentId) {
-  if (!paymentId) return null;
+export async function getOrderByPaymentId(
+  paymentId
+) {
+  if (!paymentId) {
+    return null;
+  }
 
   return prisma.order.findFirst({
     where: {
@@ -107,9 +195,17 @@ export async function getOrderByPaymentId(paymentId) {
 
 export async function getOrderItems(orderId) {
   return prisma.orderItem.findMany({
-    where: { orderId },
-    include: { product: true },
-    orderBy: { createdAt: "asc" },
+    where: {
+      orderId,
+    },
+
+    include: {
+      product: true,
+    },
+
+    orderBy: {
+      createdAt: "asc",
+    },
   });
 }
 
@@ -122,19 +218,29 @@ export async function updateRazorpayOrder({
   razorpayOrderId,
   razorpayAmount,
 }) {
-  const existingOrder = await prisma.order.findUnique({
-    where: { id: orderId },
-  });
+  const existingOrder =
+    await prisma.order.findUnique({
+      where: {
+        id: orderId,
+      },
+    });
 
   if (!existingOrder) {
-    throw new Error("Order not found");
+    throw new Error(
+      "Order not found"
+    );
   }
 
   return prisma.order.update({
-    where: { id: orderId },
+    where: {
+      id: orderId,
+    },
+
     data: {
       razorpayOrderId,
-      razorpayAmount: Number(razorpayAmount) || 0,
+
+      razorpayAmount:
+        Number(razorpayAmount) || 0,
     },
   });
 }
@@ -149,20 +255,32 @@ export async function confirmPayment({
   shiprocketOrderId,
   status = "Confirmed",
 }) {
-  const existingOrder = await prisma.order.findUnique({
-    where: { id: orderId },
-  });
+  const existingOrder =
+    await prisma.order.findUnique({
+      where: {
+        id: orderId,
+      },
+    });
 
   if (!existingOrder) {
-    throw new Error("Order not found");
+    throw new Error(
+      "Order not found"
+    );
   }
 
   return prisma.order.update({
-    where: { id: orderId },
+    where: {
+      id: orderId,
+    },
+
     data: {
       status,
-      razorpayPaymentId: paymentId,
-      shiprocketOrderId: shiprocketOrderId || null,
+
+      razorpayPaymentId:
+        paymentId,
+
+      shiprocketOrderId:
+        shiprocketOrderId || null,
     },
   });
 }
@@ -171,17 +289,26 @@ export async function confirmPayment({
    ⏳ EXPIRE OLD PENDING ORDERS
 ===================================================== */
 
-export async function expirePendingOrdersOlderThan(minutes = 30) {
-  const cutoff = new Date(Date.now() - minutes * 60 * 1000);
+export async function expirePendingOrdersOlderThan(
+  minutes = 30
+) {
+  const cutoff =
+    new Date(
+      Date.now() -
+        minutes * 60 * 1000
+    );
 
   return prisma.order.updateMany({
     where: {
       status: "Pending",
+
       razorpayPaymentId: null,
+
       createdAt: {
         lt: cutoff,
       },
     },
+
     data: {
       status: "Expired",
     },
