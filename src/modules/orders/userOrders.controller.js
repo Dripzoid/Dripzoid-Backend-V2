@@ -14,34 +14,31 @@ import { triggerAutomationEvent } from "../../integrations/automation/automation
 
 import { EVENT_TYPES } from "../../config/eventTypes.js";
 
-async function queueOrderCancelledEvent({
-  order,
-  userId,
-}) {
+/* =====================================================
+📦 QUEUE ORDER CANCELLED AUTOMATION
+===================================================== */
+
+async function queueOrderCancelledEvent({ order, userId }) {
   let automationEvent;
 
   try {
-    const user =
-      await prisma.user.findUnique({
-        where: {
-          id: userId,
-        },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-        },
-      });
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+      },
+    });
 
     if (!user) {
-      throw new Error(
-        `User not found: ${userId}`
-      );
+      throw new Error(`User not found: ${userId}`);
     }
 
     const payload = {
-      customer_name:
-        user.name || "Customer",
+      customer_name: user.name || "Customer",
 
       email: user.email,
 
@@ -49,66 +46,49 @@ async function queueOrderCancelledEvent({
 
       order_id: order.id,
 
-      order_number:
-        order.orderNumber,
+      order_number: order.orderNumber,
 
-      cancellation_date:
-        new Date().toISOString(),
+      cancellation_date: new Date().toISOString(),
 
-      payment_method:
-        order.paymentMethod ||
-        "N/A",
+      payment_method: order.paymentMethod || "N/A",
 
-      order_url:
-        `${process.env.CLIENT_URL}/order-details/${order.id}`,
+      order_url: `${process.env.CLIENT_URL}/order-details/${order.id}`,
     };
 
-    automationEvent =
-      await prisma.automationEvent.create({
-        data: {
-          eventType:
-            EVENT_TYPES.ORDER_CANCELLED,
+    automationEvent = await prisma.automationEvent.create({
+      data: {
+        eventType: EVENT_TYPES.ORDER_CANCELLED,
 
-          payload,
+        payload,
 
-          source:
-            "dripzoid-backend",
+        source: "dripzoid-backend",
 
-          status:
-            "pending",
-        },
-      });
+        status: "pending",
+      },
+    });
 
-    await triggerAutomationEvent(
-  EVENT_TYPES.ORDER_CANCELLED,
-  {
-    automationEventId:
-      automationEvent.id,
+    await triggerAutomationEvent(EVENT_TYPES.ORDER_CANCELLED, {
+      automationEventId: automationEvent.id,
+      ...payload,
+    });
 
-    ...payload,
-  }
-);
+    await prisma.automationEvent.update({
+      where: {
+        id: automationEvent.id,
+      },
+      data: {
+        status: "completed",
 
-await prisma.automationEvent.update({
-  where: {
-    id: automationEvent.id,
-  },
-  data: {
-    status:
-      "completed",
+        completedAt: new Date(),
 
-    completedAt:
-      new Date(),
+        lastError: null,
+      },
+    });
 
-    lastError:
-      null,
-  },
-});
-
-console.log(
-  "✅ ORDER_CANCELLED automation triggered",
-  automationEvent.id
-);
+    console.log(
+      "✅ ORDER_CANCELLED automation triggered",
+      automationEvent.id
+    );
   } catch (error) {
     console.error(
       "❌ ORDER_CANCELLED automation failed:",
@@ -121,21 +101,17 @@ console.log(
           where: {
             id: automationEvent.id,
           },
-         data: {
-  retryCount: {
-    increment: 1,
-  },
+          data: {
+            retryCount: {
+              increment: 1,
+            },
 
-  status:
-    "pending",
+            status: "pending",
 
-  lastError:
-    error?.response?.data
-      ? JSON.stringify(
-          error.response.data
-        )
-      : error.message,
-},
+            lastError: error?.response?.data
+              ? JSON.stringify(error.response.data)
+              : error.message,
+          },
         });
       } catch (updateError) {
         console.error(
@@ -146,292 +122,293 @@ console.log(
     }
   }
 }
+
 /* =====================================================
-   📦 GET ALL USER ORDERS
+📦 GET ALL USER ORDERS
 ===================================================== */
 
-export const getUserOrders =
-  async (req, res) => {
-    try {
-      const userId =
-        req.user.id;
+export const getUserOrders = async (req, res) => {
+  try {
+    const userId = req.user.id;
 
-      const page =
-        Number(
-          req.query.page
-        ) || 1;
+    const page = Number(req.query.page) || 1;
 
-      const limit =
-        Number(
-          req.query.limit
-        ) || 10;
+    const limit = Number(req.query.limit) || 10;
 
-      const data =
-        await getUserOrdersService(
-          userId,
-          req.query
-        );
+    const data = await getUserOrdersService(
+      userId,
+      req.query
+    );
 
-      return res.json({
-        success: true,
+    return res.json({
+      success: true,
 
-        data,
+      data,
 
-        meta: {
-          total:
-            data.length,
+      meta: {
+        total: data.length,
 
-          page,
+        page,
 
-          pages: 1,
+        pages: 1,
 
-          limit,
-        },
-      });
-    } catch (err) {
-      console.error(
-        "getUserOrders error:",
-        err
-      );
+        limit,
+      },
+    });
+  } catch (err) {
+    console.error("getUserOrders error:", err);
 
-      return res.status(500).json({
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Failed to fetch orders",
+    });
+  }
+};
+
+/* =====================================================
+📦 GET SINGLE ORDER
+===================================================== */
+
+export const getOrder = async (req, res) => {
+  try {
+    const data = await getOrderByIdService(
+      req.user.id,
+      req.params.id
+    );
+
+    return res.json({
+      success: true,
+      data,
+    });
+  } catch (err) {
+    console.error("getOrder error:", err);
+
+    return res.status(404).json({
+      success: false,
+      message: err.message || "Order not found",
+    });
+  }
+};
+
+/* =====================================================
+❌ CANCEL ORDER
+===================================================== */
+
+export const cancelOrder = async (req, res) => {
+  try {
+    const cancelledOrder = await cancelOrderService(
+      req.user.id,
+      req.params.id
+    );
+
+    await queueOrderCancelledEvent({
+      order: cancelledOrder,
+      userId: req.user.id,
+    });
+
+    return res.json({
+      success: true,
+      message: "Order cancelled successfully",
+    });
+  } catch (err) {
+    console.error("cancelOrder error:", err);
+
+    return res.status(400).json({
+      success: false,
+      message: err.message || "Failed to cancel order",
+    });
+  }
+};
+
+/* =====================================================
+🔁 REORDER
+===================================================== */
+
+export const reorder = async (req, res) => {
+  try {
+    const newOrderId = await reorderService(
+      req.user.id,
+      req.params.id
+    );
+
+    const orders = await getUserOrdersService(
+      req.user.id,
+      {}
+    );
+
+    return res.json({
+      success: true,
+
+      message: "Reorder placed successfully",
+
+      newOrderId,
+
+      orders,
+    });
+  } catch (err) {
+    console.error("reorder error:", err);
+
+    return res.status(400).json({
+      success: false,
+      message: err.message || "Reorder failed",
+    });
+  }
+};
+
+/* =====================================================
+✅ VERIFY PRODUCT PURCHASE
+
+POST /api/user/orders/verify
+
+Body:
+{
+  "productId": "PRODUCT_UUID"
+}
+
+Authentication:
+req.user.id
+
+Response:
+{
+  "success": true,
+  "purchased": true,
+  "hasReviewed": false,
+  "canReview": true
+}
+===================================================== */
+
+export const verifyProductPurchase = async (req, res) => {
+  try {
+    /*
+     * IMPORTANT:
+     * Never accept userId from req.body or req.query.
+     * Always use the authenticated user.
+     */
+    const userId = req.user?.id;
+
+    /*
+     * The API contract is POST + JSON body.
+     */
+    const { productId } = req.body || {};
+
+    if (!userId) {
+      return res.status(401).json({
         success: false,
-        message:
-          err.message ||
-          "Failed to fetch orders",
+        message: "Authentication required",
       });
     }
-  };
 
-/* =====================================================
-   📦 GET SINGLE ORDER
-===================================================== */
-
-export const getOrder =
-  async (req, res) => {
-    try {
-      const data =
-        await getOrderByIdService(
-          req.user.id,
-          req.params.id
-        );
-
-      return res.json({
-        success: true,
-        data,
-      });
-    } catch (err) {
-      console.error(
-        "getOrder error:",
-        err
-      );
-
-      return res.status(404).json({
-        success: false,
-        message:
-          err.message ||
-          "Order not found",
-      });
-    }
-  };
-
-/* =====================================================
-   ❌ CANCEL ORDER
-===================================================== */
-
-export const cancelOrder =
-  async (req, res) => {
-    try {
-      const cancelledOrder =
-  await cancelOrderService(
-    req.user.id,
-    req.params.id
-  );
-
-await queueOrderCancelledEvent({
-  order: cancelledOrder,
-  userId: req.user.id,
-});
-
-      return res.json({
-        success: true,
-        message:
-          "Order cancelled successfully",
-      });
-    } catch (err) {
-      console.error(
-        "cancelOrder error:",
-        err
-      );
-
+    if (!productId) {
       return res.status(400).json({
         success: false,
-        message:
-          err.message ||
-          "Failed to cancel order",
+        message: "productId is required",
       });
     }
-  };
+
+    /*
+     * Check whether the authenticated user actually
+     * purchased this exact product.
+     */
+    const purchased = await verifyProductPurchaseService(
+      userId,
+      productId
+    );
+
+    /*
+     * Check whether this same authenticated user has
+     * already reviewed this same product.
+     */
+    const existingReview = await prisma.review.findFirst({
+      where: {
+        productId,
+        userId,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    const hasReviewed = !!existingReview;
+
+    /*
+     * User can review only when:
+     *
+     * purchased === true
+     * AND
+     * hasReviewed === false
+     */
+    const canReview = purchased && !hasReviewed;
+
+    return res.json({
+      success: true,
+
+      purchased,
+
+      hasReviewed,
+
+      canReview,
+    });
+  } catch (err) {
+    console.error(
+      "verifyProductPurchase error:",
+      err
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        err.message || "Verification failed",
+    });
+  }
+};
 
 /* =====================================================
-   🔁 REORDER
+📍 TRACK ORDER
 ===================================================== */
 
-export const reorder =
-  async (req, res) => {
-    try {
-      const newOrderId =
-        await reorderService(
-          req.user.id,
-          req.params.id
-        );
+export const trackOrder = async (req, res) => {
+  try {
+    const tracking = await trackOrderService(
+      req.user.id,
+      req.params.id
+    );
 
-      const orders =
-        await getUserOrdersService(
-          req.user.id,
-          {}
-        );
+    return res.json({
+      success: true,
+      tracking,
+    });
+  } catch (err) {
+    console.error("trackOrder error:", err);
 
-      return res.json({
-        success: true,
-
-        message:
-          "Reorder placed successfully",
-
-        newOrderId,
-
-        orders,
-      });
-    } catch (err) {
-      console.error(
-        "reorder error:",
-        err
-      );
-
-      return res.status(400).json({
-        success: false,
-        message:
-          err.message ||
-          "Reorder failed",
-      });
-    }
-  };
+    return res.status(400).json({
+      success: false,
+      message: err.message || "Tracking failed",
+    });
+  }
+};
 
 /* =====================================================
-   ✅ VERIFY PRODUCT PURCHASE
+🧾 DOWNLOAD INVOICE
 ===================================================== */
 
-export const verifyProductPurchase =
-  async (req, res) => {
-    try {
-      const userId =
-        req.query.userId ||
-        req.body.userId ||
-        req.user?.id;
+export const downloadInvoice = async (req, res) => {
+  try {
+    const invoice = await downloadInvoiceService(
+      req.user.id,
+      req.params.id
+    );
 
-      const productId =
-        req.query.productId ||
-        req.body.productId;
+    return res.json({
+      success: true,
+      invoice,
+    });
+  } catch (err) {
+    console.error("downloadInvoice error:", err);
 
-      if (
-        !userId ||
-        !productId
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "userId and productId are required",
-        });
-      }
-
-      const purchased =
-        await verifyProductPurchaseService(
-          userId,
-          productId
-        );
-
-      return res.json({
-        success: true,
-
-        purchased,
-
-        canReview:
-          purchased,
-      });
-    } catch (err) {
-      console.error(
-        "verifyProductPurchase error:",
-        err
-      );
-
-      return res.status(500).json({
-        success: false,
-        message:
-          err.message ||
-          "Verification failed",
-      });
-    }
-  };
-/* =====================================================
-   📍 TRACK ORDER
-===================================================== */
-
-export const trackOrder =
-  async (req, res) => {
-    try {
-      const tracking =
-        await trackOrderService(
-          req.user.id,
-          req.params.id
-        );
-
-      return res.json({
-        success: true,
-        tracking,
-      });
-    } catch (err) {
-      console.error(
-        "trackOrder error:",
-        err
-      );
-
-      return res.status(400).json({
-        success: false,
-        message:
-          err.message ||
-          "Tracking failed",
-      });
-    }
-  };
-
-/* =====================================================
-   🧾 DOWNLOAD INVOICE
-===================================================== */
-
-export const downloadInvoice =
-  async (req, res) => {
-    try {
-      const invoice =
-        await downloadInvoiceService(
-          req.user.id,
-          req.params.id
-        );
-
-      return res.json({
-        success: true,
-        invoice,
-      });
-    } catch (err) {
-      console.error(
-        "downloadInvoice error:",
-        err
-      );
-
-      return res.status(400).json({
-        success: false,
-        message:
-          err.message ||
-          "Invoice unavailable",
-      });
-    }
-  };
+    return res.status(400).json({
+      success: false,
+      message:
+        err.message || "Invoice unavailable",
+    });
+  }
+};
