@@ -23,7 +23,7 @@ app.use(
     origin: [
       "https://askdrip-frontend.onrender.com",
       "https://dripzoid.com",
-      "https://ask.dripzoid.com",
+      "https://dripzoid-frontend.onrender.com",
     ],
 
     credentials: true,
