@@ -108,17 +108,16 @@ async function seedKB(
 
   for (const fact of facts) {
     try {
+      const existing = await prisma.kBVector.findUnique({
+        where: {
+          route_factText: {
+            route,
+            factText: fact,
+          },
+        },
+      });
 
-      const existing =
-  await prisma.$queryRawUnsafe(
-    "SELECT id FROM kb_vectors WHERE route = $1 AND fact_text = $2 LIMIT 1",
-    route,
-    fact
-  );
-
-      if (
-        existing.length
-      ) {
+      if (existing) {
         skipped++;
         continue;
       }
@@ -128,59 +127,34 @@ async function seedKB(
           fact
         );
 
-    await prisma.$executeRawUnsafe(
-  `
-  INSERT INTO kb_vectors
-  (
-    id,
-    route,
-    fact_text,
-    embedding
-  )
-  VALUES
-  (
-    gen_random_uuid(),
-    $1,
-    $2,
-    $3::vector
-  )
-  `,
-  route,
-  fact,
-  JSON.stringify(embedding)
-);
+      await prisma.kBVector.create({
+        data: {
+          route,
+          factText: fact,
+          embedding,
+        },
+      });
 
       inserted++;
 
-      console.log(
-        "Inserted " +
-        inserted +
-        "/" +
-        facts.length
-      );
-
+      if (
+        inserted %
+          20 ===
+        0
+      ) {
+        console.log(
+          "Inserted " +
+          inserted +
+          " facts"
+        );
+      }
     } catch (error) {
-
       console.error(
-        "Failed: " +
-        fact
+        "Failed fact:",
+        error.message
       );
-
-      console.error(
-        error
-      );
-
     }
   }
-
-  console.log(
-    "\n----------------------"
-  );
-
-  console.log(
-    "Route   : " +
-    route
-  );
 
   console.log(
     "Inserted: " +
@@ -188,94 +162,26 @@ async function seedKB(
   );
 
   console.log(
-    "Skipped : " +
+    "Skipped: " +
     skipped
-  );
-
-  console.log(
-    "----------------------\n"
   );
 }
 
 /**
- * MAIN
+ * MAIN ENTRY
  */
 
 async function main() {
-
-  console.log(
-    "\nKB Vector Seeding Started\n"
-  );
-
-  console.log(
-    "Working Directory:",
-    process.cwd()
-  );
-
-  console.log(
-    "KB Directory:",
-    kbDirectory
-  );
-
-  const exists =
-    await fs
-      .access(
-        kbDirectory
-      )
-      .then(
-        () => true
-      )
-      .catch(
-        () => false
-      );
-
-  if (!exists) {
-    throw new Error(
-      "KB directory not found: " +
-      kbDirectory
-    );
-  }
-
-  const files =
-    await fs.readdir(
-      kbDirectory
-    );
-
-  const txtFiles =
-    files.filter(
-      (file) =>
-        file.endsWith(
-          ".txt"
-        )
-    );
-
-  console.log(
-    "Found " +
-    txtFiles.length +
-    " KB files"
-  );
-
-  for (const file of txtFiles) {
-
-    const route =
-      ROUTE_MAP[
-        file
-      ];
-
-    if (!route) {
-
-      console.warn(
-        "Skipping unmapped file: " +
-        file
-      );
-
-      continue;
-    }
-
+  for (const [
+    fileName,
+    route,
+  ] of Object.entries(
+    ROUTE_MAP
+  )) {
     const filePath =
       path.join(
         kbDirectory,
-        file
+        fileName
       );
 
     await seedKB(
@@ -284,13 +190,7 @@ async function main() {
     );
   }
 
-   const result =
-  await prisma.$queryRawUnsafe(
-    "SELECT COUNT(*)::int AS total FROM kb_vectors"
-  );
-
-  const total =
-    result[0].total;
+  const total = await prisma.kBVector.count();
 
   console.log(
     "\nKB Seeding Complete\n"
@@ -305,7 +205,6 @@ async function main() {
 main()
   .catch(
     (error) => {
-
       console.error(
         error
       );
@@ -313,13 +212,10 @@ main()
       process.exit(
         1
       );
-
     }
   )
   .finally(
     async () => {
-
       await prisma.$disconnect();
-
     }
   );

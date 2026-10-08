@@ -3,11 +3,17 @@ node_modules/
 
 # Environment variables
 .env
+.env.*
+*.env
+credentials
+secrets
+atlas-credentials.env
 
-# Local SQLite databases
+# Local SQLite databases & dumps
 *.db
 *.db-journal
 dripzoid.db
+*.sql
 
 # Logs
 npm-debug.log*
@@ -24,5 +30,9 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Temp & Uploads
+temp/
+uploads/
 
 /src/generated/prisma

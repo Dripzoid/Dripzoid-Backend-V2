@@ -12,29 +12,18 @@ async function saveEmbedding(
   productId,
   embedding
 ) {
-  const vector =
-    `[${embedding.join(",")}]`;
-
-  await prisma.$executeRawUnsafe(
-    `
-    INSERT INTO product_vectors (
-      product_id,
-      embedding
-    )
-    VALUES (
-      $1::uuid,
-      $2::vector
-    )
-    ON CONFLICT (product_id)
-    DO UPDATE SET
-      embedding =
-        EXCLUDED.embedding,
-      updated_at =
-        NOW()
-    `,
-    productId,
-    vector
-  );
+  await prisma.productVector.upsert({
+    where: {
+      productId,
+    },
+    update: {
+      embedding,
+    },
+    create: {
+      productId,
+      embedding,
+    },
+  });
 }
 
 async function main() {

@@ -1,106 +1,56 @@
 import prisma from "../../lib/prisma.js";
+import { generateEmbedding } from "./embedding.service.js";
 
-import {
-  generateEmbedding,
-} from "./embedding.service.js";
+function cosineSimilarity(vecA, vecB) {
+  if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
+  let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < vecA.length; i++) {
+    dotProduct += vecA[i] * vecB[i];
+    normA += vecA[i] * vecA[i];
+    normB += vecB[i] * vecB[i];
+  }
+  if (normA === 0 || normB === 0) return 0;
+  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+}
 
-export async function searchProductsSemantic(
-  query,
-  limit = 10
-) {
-
+export async function searchProductsSemantic(query, limit = 10) {
   if (!query?.trim()) {
     return [];
   }
 
-  const safeLimit = Math.min(
-    Number(limit) || 10,
-    50
-  );
+  const safeLimit = Math.min(Number(limit) || 10, 50);
 
-  const embedding =
-    await generateEmbedding(
-      query
-    );
+  const embedding = await generateEmbedding(query);
 
-  const vector =
-    `[${embedding.join(",")}]`;
-
-  const matches =
-    await prisma.$queryRawUnsafe(
-      `
-      SELECT
-        product_id,
-        embedding <=> $1::vector
-          AS distance
-      FROM product_vectors
-      ORDER BY distance ASC
-      LIMIT $2
-      `,
-      vector,
-      safeLimit
-    );
-
-  if (!matches.length) {
+  if (!embedding || !embedding.length) {
     return [];
   }
 
-  const ids =
-    matches.map(
-      (match) =>
-        match.product_id
-    );
-
-  const products =
-    await prisma.product.findMany({
-      where: {
-        id: {
-          in: ids,
+  const productVectors = await prisma.productVector.findMany({
+    include: {
+      product: {
+        include: {
+          category: true,
+          sizes: true,
         },
       },
+    },
+  });
 
-      include: {
-        category: true,
-        sizes: true,
-      },
+  const scored = productVectors
+    .filter((pv) => pv.product && pv.embedding && pv.embedding.length)
+    .map((pv) => {
+      const similarity = cosineSimilarity(embedding, pv.embedding);
+      const distance = 1 - similarity;
+      return {
+        ...pv.product,
+        semanticScore: similarity,
+        semanticDistance: distance,
+      };
     });
 
-  const productMap =
-    new Map(
-      products.map(
-        (product) => [
-          product.id,
-          product,
-        ]
-      )
-    );
-
-  return matches
-    .map((match) => {
-
-      const product =
-        productMap.get(
-          match.product_id
-        );
-
-      if (!product) {
-        return null;
-      }
-
-      return {
-        ...product,
-
-        semanticScore:
-          1 -
-          Number(
-            match.distance
-          ),
-
-        semanticDistance:
-          Number(
-            match.distance
-          ),
-      };
-    })
-    .filter(Boolean);
+  scored.sort((a, b) => b.semanticScore - a.semanticScore);
+  return scored.slice(0, safeLimit);
 }

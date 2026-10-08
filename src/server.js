@@ -20,7 +20,7 @@ async function startServer() {
     await prisma.$connect();
 
     console.log(
-      "✅ PostgreSQL connected successfully"
+      "✅ MongoDB connected successfully"
     );
 
     console.log(
@@ -65,7 +65,7 @@ async function shutdown() {
     await prisma.$disconnect();
 
     console.log(
-      "✅ PostgreSQL disconnected"
+      "✅ MongoDB disconnected"
     );
 
     process.exit(0);

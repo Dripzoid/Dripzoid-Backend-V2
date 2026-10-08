@@ -1,79 +1,45 @@
 import prisma from "../../lib/prisma.js";
 
 export async function getAllProductVectors() {
+  const vectors = await prisma.productVector.findMany({
+    include: {
+      product: true,
+    },
+  });
 
-  const products =
-    await prisma.$queryRaw`
-      SELECT
-        pv.product_id,
-        pv.embedding::text AS embedding,
-
-        p.id,
-        p.name,
-        p.slug,
-        p.description,
-        p."categoryId",
-        p.subcategory,
-        p."price",
-        p."originalPrice",
-        p.images,
-        p.colors,
-        p.rating,
-        p.stock,
-        p.sold,
-        p.featured,
-        p."createdAt",
-        p."updatedAt"
-
-      FROM product_vectors pv
-      INNER JOIN "Product" p
-        ON p.id = pv.product_id::text
-    `;
-
-  return products.map(
-    (product) => ({
-      product_id:
-        product.product_id,
-
-      embedding:
-        JSON.parse(
-          product.embedding
-        ),
-
+  return vectors
+    .filter((item) => item.product)
+    .map((item) => ({
+      product_id: item.productId,
+      embedding: item.embedding,
       product: {
-        id: product.id,
-        name: product.name,
-        slug: product.slug,
-        description: product.description,
-        categoryId: product.categoryId,
-        subcategory: product.subcategory,
-        price: product.price,
-        originalPrice: product.originalPrice,
-        images: product.images,
-        colors: product.colors,
-        rating: product.rating,
-        stock: product.stock,
-        sold: product.sold,
-        featured: product.featured,
-        createdAt: product.createdAt,
-        updatedAt: product.updatedAt
-      }
-    })
-  );
+        id: item.product.id,
+        name: item.product.name,
+        slug: item.product.slug,
+        description: item.product.description,
+        categoryId: item.product.categoryId,
+        subcategory: item.product.subcategory,
+        price: item.product.price,
+        originalPrice: item.product.originalPrice,
+        images: item.product.images,
+        colors: item.product.colors,
+        rating: item.product.rating,
+        stock: item.product.stock,
+        sold: item.product.sold,
+        featured: item.product.featured,
+        createdAt: item.product.createdAt,
+        updatedAt: item.product.updatedAt,
+      },
+    }));
 }
 
 export async function getAllKBVectors() {
-  const vectors =
-    await prisma.$queryRaw`
-      SELECT
-        route,
-        fact_text,
-        embedding::text AS embedding
-      FROM kb_vectors
-    `;
+  const vectors = await prisma.kBVector.findMany();
 
   return vectors.map((item) => ({
-    ...item,
-    embedding: JSON.parse(item.embedding),
+    id: item.id,
+    route: item.route,
+    fact_text: item.factText,
+    embedding: item.embedding,
   }));
 }
