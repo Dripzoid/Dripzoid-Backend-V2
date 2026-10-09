@@ -1,0 +1,93 @@
+
+name: Deploy Dripzoid Backend to OCI
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dripzoid-backend-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to OCI
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+          OCI_USER: ${{ secrets.OCI_USER }}
+          OCI_SSH_KEY: ${{ secrets.OCI_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$OCI_SSH_KEY" > ~/.ssh/oci_deploy
+          chmod 600 ~/.ssh/oci_deploy
+          ssh-keyscan -H "$OCI_HOST" >> ~/.ssh/known_hosts
+          ssh -i ~/.ssh/oci_deploy \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            "$OCI_USER@$OCI_HOST" \
+            'echo SSH connection successful'
+
+      - name: Deploy application
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+          OCI_USER: ${{ secrets.OCI_USER }}
+          OCI_SSH_KEY: ${{ secrets.OCI_SSH_KEY }}
+        run: |
+          set -eu
+          ssh -i ~/.ssh/oci_deploy \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            "$OCI_USER@$OCI_HOST" 'bash -se' <<'REMOTE'
+          set -euo pipefail
+
+          cd /home/ubuntu/Dripzoid-Backend-V2
+
+          # Do not overwrite local modifications.
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "ERROR: Working tree is not clean; refusing deployment."
+            git status --short
+            exit 1
+          fi
+
+          git fetch origin main
+          git merge-base --is-ancestor HEAD origin/main || {
+            echo "ERROR: Server HEAD is not an ancestor of origin/main."
+            exit 1
+          }
+
+          git pull --ff-only origin main
+          npm ci --omit=dev
+          pm2 restart dripzoid-backend --update-env
+
+          for attempt in {1..12}; do
+            if curl --fail --silent \
+              http://127.0.0.1:5000/ >/dev/null; then
+              echo "Deployment health check passed."
+              exit 0
+            fi
+            sleep 5
+          done
+
+          echo "ERROR: Health check failed."
+          pm2 logs dripzoid-backend --lines 50 --nostream
+          exit 1
+          REMOTE
+
+      - name: Remove temporary SSH key
+        if: always()
+        run: rm -f ~/.ssh/oci_deploy
