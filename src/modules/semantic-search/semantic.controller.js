@@ -60,6 +60,7 @@ export async function searchProducts(req, res) {
     const { minPrice, maxPrice, category } = req.query;
 
     if (!query) {
+      console.log("[Search] Received empty search query");
       if (req.query.format === "array") {
         return res.status(200).json([]);
       }
@@ -72,6 +73,8 @@ export async function searchProducts(req, res) {
     }
 
     let products = [];
+    let semanticErrorOccurred = false;
+
     try {
       products = await withTimeout(
         searchProductsSemantic(query, limit, {
@@ -81,10 +84,13 @@ export async function searchProducts(req, res) {
         }),
         4000
       );
+      if (products.length > 0) {
+        console.log(`[Search] Semantic search returned ${products.length} products for "${query}"`);
+      }
     } catch (semanticError) {
-      console.error(
-        "Semantic search encountered an issue, falling back to keyword search:",
-        semanticError.message
+      semanticErrorOccurred = true;
+      console.warn(
+        `[Search] Semantic search error for "${query}": ${semanticError.message}. Falling back to keyword search.`
       );
       products = [];
     }
@@ -103,8 +109,19 @@ export async function searchProducts(req, res) {
           }),
           3000
         );
+        if (products.length > 0) {
+          console.log(`[Search] Keyword fallback returned ${products.length} products for "${query}"`);
+        } else {
+          console.log(`[Search] Genuine zero matches for "${query}" across catalog`);
+        }
       } catch (fallbackError) {
-        console.error("Fallback search failed:", fallbackError.message);
+        console.error(`[Search] Keyword fallback error for "${query}": ${fallbackError.message}`);
+        if (semanticErrorOccurred) {
+          return res.status(500).json({
+            success: false,
+            message: "Search service is temporarily unavailable. Please try again later.",
+          });
+        }
         products = [];
       }
     }

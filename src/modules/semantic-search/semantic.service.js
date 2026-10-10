@@ -53,18 +53,20 @@ export async function searchProductsSemantic(query, limit = 10, filters = {}) {
     });
 
   const { minPrice, maxPrice, category } = filters || {};
-  if (minPrice !== undefined && !isNaN(Number(minPrice))) {
+  if (minPrice !== undefined && !isNaN(Number(minPrice)) && Number(minPrice) > 0) {
     scored = scored.filter((p) => Number(p.price) >= Number(minPrice));
   }
-  if (maxPrice !== undefined && !isNaN(Number(maxPrice))) {
+  if (maxPrice !== undefined && !isNaN(Number(maxPrice)) && Number(maxPrice) > 0 && Number(maxPrice) < 999999) {
     scored = scored.filter((p) => Number(p.price) <= Number(maxPrice));
   }
-  if (category) {
+  if (category && String(category).trim().toLowerCase() !== "all") {
     const catLower = String(category).trim().toLowerCase();
     scored = scored.filter(
       (p) =>
         String(p.category?.category || "").toLowerCase() === catLower ||
-        String(p.category || "").toLowerCase() === catLower
+        String(p.category || "").toLowerCase() === catLower ||
+        String(p.subcategory || "").toLowerCase() === catLower ||
+        String(p.category?.subcategory || "").toLowerCase() === catLower
     );
   }
 
