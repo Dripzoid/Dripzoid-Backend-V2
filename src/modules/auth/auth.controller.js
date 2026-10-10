@@ -367,9 +367,16 @@ export const googleAuth = (
   res,
   next
 ) => {
+  const defaultClient = (
+    process.env.CLIENT_URL ||
+    (process.env.NODE_ENV === "production"
+      ? "https://dripzoid-frontend.onrender.com"
+      : "http://localhost:3000")
+  ).replace(/\/+$/, "");
+
   const returnTo =
     req.query.returnTo ||
-    CLIENT_URL;
+    defaultClient;
 
   passport.authenticate(
     "google",
@@ -394,18 +401,37 @@ export const googleAuth = (
 ====================================================== */
 
 export const googleCallback = [
-  passport.authenticate(
-    "google",
-    {
-      failureRedirect:
-        `${CLIENT_URL}/login`,
+  (req, res, next) => {
+    const defaultClient = (
+      process.env.CLIENT_URL ||
+      (process.env.NODE_ENV === "production"
+        ? "https://dripzoid-frontend.onrender.com"
+        : "http://localhost:3000")
+    ).replace(/\/+$/, "");
 
-      session: false,
-    }
-  ),
+    passport.authenticate(
+      "google",
+      {
+        failureRedirect:
+          `${defaultClient}/login?error=google_auth_failed`,
+        session: false,
+      }
+    )(req, res, next);
+  },
 
   async (req, res) => {
+    const defaultClient = (
+      process.env.CLIENT_URL ||
+      (process.env.NODE_ENV === "production"
+        ? "https://dripzoid-frontend.onrender.com"
+        : "http://localhost:3000")
+    ).replace(/\/+$/, "");
+
     try {
+      if (!req.user) {
+        throw new Error("No Google profile received");
+      }
+
       /* =========================
          GOOGLE USER
       ========================= */
@@ -462,7 +488,7 @@ export const googleCallback = [
           ? decodeURIComponent(
               req.query.state
             )
-          : CLIENT_URL;
+          : defaultClient;
 
       console.log(
         "Google Return To:",
@@ -474,11 +500,22 @@ export const googleCallback = [
       ========================= */
 
       const allowedOrigins = [
+        "https://dripzoid-frontend.onrender.com",
         "https://dripzoid.com",
         "https://www.dripzoid.com",
+        "https://askdrip-frontend.onrender.com",
         "https://ask.dripzoid.com",
+        "http://localhost:3000",
         "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
       ];
+
+      if (process.env.CLIENT_URL) {
+        allowedOrigins.push(
+          process.env.CLIENT_URL.replace(/\/+$/, "")
+        );
+      }
 
       const isAllowed =
         allowedOrigins.some(
@@ -488,23 +525,28 @@ export const googleCallback = [
             )
         );
 
-      /* =========================
-         REDIRECT USER
-      ========================= */
+      const targetUrl = isAllowed ? returnTo : defaultClient;
 
-      return res.redirect(
-        isAllowed
-          ? returnTo
-          : CLIENT_URL
-      );
+      // Append token so client can authenticate reliably across domains even if cross-site cookies are blocked
+      let redirectDestination = targetUrl;
+      try {
+        const urlObj = new URL(targetUrl);
+        urlObj.searchParams.set("token", token);
+        redirectDestination = urlObj.toString();
+      } catch {
+        const separator = targetUrl.includes("?") ? "&" : "?";
+        redirectDestination = `${targetUrl}${separator}token=${encodeURIComponent(token)}`;
+      }
+
+      return res.redirect(redirectDestination);
     } catch (err) {
       console.error(
         "Google Auth Error:",
-        err
+        err.message || err
       );
 
       return res.redirect(
-        `${CLIENT_URL}/login`
+        `${defaultClient}/login?error=${encodeURIComponent("Google authentication failed")}`
       );
     }
   },

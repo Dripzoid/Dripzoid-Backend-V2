@@ -14,19 +14,50 @@ import {
 
 const app = express();
 
+app.set("trust proxy", 1);
+
 /* =====================================================
    🌍 CORS
 ===================================================== */
 
+const defaultAllowedOrigins = [
+  "https://dripzoid-frontend.onrender.com",
+  "https://dripzoid.com",
+  "https://www.dripzoid.com",
+  "https://askdrip-frontend.onrender.com",
+  "https://ask.dripzoid.com",
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:5173",
+];
+
+const envClient = process.env.CLIENT_URL
+  ? process.env.CLIENT_URL.replace(/\/+$/, "")
+  : null;
+
+const allowedOrigins =
+  envClient && !defaultAllowedOrigins.includes(envClient)
+    ? [...defaultAllowedOrigins, envClient]
+    : defaultAllowedOrigins;
+
 app.use(
   cors({
-    origin: [
-      "https://askdrip-frontend.onrender.com",
-      "https://dripzoid.com",
-      "https://dripzoid-frontend.onrender.com",
-    ],
-
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error(`Origin ${origin} not allowed by CORS`));
+    },
     credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+      "Accept",
+    ],
   })
 );
 
