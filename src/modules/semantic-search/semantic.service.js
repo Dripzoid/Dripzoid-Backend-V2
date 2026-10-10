@@ -1,5 +1,6 @@
 import prisma from "../../lib/prisma.js";
 import { generateEmbedding } from "./embedding.service.js";
+import { formatProduct } from "../products/product.utils.js";
 
 function cosineSimilarity(vecA, vecB) {
   if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
@@ -15,8 +16,8 @@ function cosineSimilarity(vecA, vecB) {
   return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-export async function searchProductsSemantic(query, limit = 10) {
-  if (!query?.trim()) {
+export async function searchProductsSemantic(query, limit = 10, filters = {}) {
+  if (!query || typeof query !== "string" || !query.trim()) {
     return [];
   }
 
@@ -39,7 +40,7 @@ export async function searchProductsSemantic(query, limit = 10) {
     },
   });
 
-  const scored = productVectors
+  let scored = productVectors
     .filter((pv) => pv.product && pv.embedding && pv.embedding.length)
     .map((pv) => {
       const similarity = cosineSimilarity(embedding, pv.embedding);
@@ -51,6 +52,34 @@ export async function searchProductsSemantic(query, limit = 10) {
       };
     });
 
+  const { minPrice, maxPrice, category } = filters || {};
+  if (minPrice !== undefined && !isNaN(Number(minPrice))) {
+    scored = scored.filter((p) => Number(p.price) >= Number(minPrice));
+  }
+  if (maxPrice !== undefined && !isNaN(Number(maxPrice))) {
+    scored = scored.filter((p) => Number(p.price) <= Number(maxPrice));
+  }
+  if (category) {
+    const catLower = String(category).trim().toLowerCase();
+    scored = scored.filter(
+      (p) =>
+        String(p.category?.category || "").toLowerCase() === catLower ||
+        String(p.category || "").toLowerCase() === catLower
+    );
+  }
+
   scored.sort((a, b) => b.semanticScore - a.semanticScore);
-  return scored.slice(0, safeLimit);
+  const topResults = scored.slice(0, safeLimit);
+
+  return Promise.all(
+    topResults.map(async (prod) => {
+      const formatted = await formatProduct(prod);
+      return {
+        ...formatted,
+        image: formatted.images?.[0] || prod.image || null,
+        semanticScore: prod.semanticScore,
+        semanticDistance: prod.semanticDistance,
+      };
+    })
+  );
 }

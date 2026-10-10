@@ -9,6 +9,10 @@ import {
   getRelatedProducts,
 } from "./product.controller.js";
 
+import {
+  searchProducts,
+} from "../semantic-search/semantic.controller.js";
+
 const router =
   express.Router();
 
@@ -19,6 +23,20 @@ const router =
 router.get(
   "/products",
   getProducts
+);
+
+/* =====================================================
+   🔥 SEMANTIC PRODUCT SEARCH
+===================================================== */
+
+router.get(
+  "/products/search",
+  searchProducts
+);
+
+router.post(
+  "/products/search",
+  searchProducts
 );
 
 /* =====================================================
