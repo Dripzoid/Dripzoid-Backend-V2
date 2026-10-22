@@ -23,7 +23,9 @@ export function normalizeShippingAddress(
       `${shippingAddress?.first_name || ""}
        ${shippingAddress?.last_name || ""}`
         .replace(/\s+/g, " ")
-        .trim(),
+        .trim() ||
+      user?.name ||
+      "Customer",
 
     line1:
       shippingAddress?.line1 ||
