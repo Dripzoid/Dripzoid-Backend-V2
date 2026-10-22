@@ -94,13 +94,21 @@ export const placeOrder =
 
       try {
 
-        const serviceability =
-          await checkServiceability(
-            normalizedAddress.pincode,
-            {
-              weight: 0.5,
-            }
+        const svcTimeout =
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Serviceability check timeout")), 2500)
           );
+
+        const serviceability =
+          await Promise.race([
+            checkServiceability(
+              normalizedAddress.pincode,
+              {
+                weight: 0.5,
+              }
+            ),
+            svcTimeout,
+          ]);
 
         if (
   serviceability?.length
@@ -172,143 +180,116 @@ const {
 } = orderData;
 
       /* =========================================
-         🚀 CREATE SHIPROCKET ORDER
+         🚀 ASYNC SHIPROCKET & POST-ORDER TASKS
       ========================================= */
 
-      let shiprocket =
-        null;
+      const runPostOrderTasks = async () => {
+        let shiprocket = null;
 
-      try {
+        try {
+          const payload =
+            buildShiprocketPayload({
+              orderId,
+              orderNumber,
+              items: normalizedItems,
+              shippingAddress: normalizedAddress,
+              paymentMethod,
+              totalAmount,
+              customerName:
+                req.user?.name ||
+                normalizedAddress?.name,
+              customerEmail:
+                req.user?.email,
+              customerPhone:
+                normalizedAddress?.phone,
+            });
 
-        const payload =
-  buildShiprocketPayload({
-    orderId,
-    orderNumber,
+          shiprocket =
+            await createShiprocketOrder(
+              payload
+            );
 
-    items: normalizedItems,
-
-    shippingAddress:
-      normalizedAddress,
-
-    paymentMethod,
-
-    totalAmount,
-
-    customerName:
-      req.user?.name ||
-      normalizedAddress?.name,
-
-    customerEmail:
-      req.user?.email,
-
-    customerPhone:
-      normalizedAddress?.phone,
-  });
-
-        shiprocket =
-          await createShiprocketOrder(
-            payload
+          if (
+            shiprocket?.order_id ||
+            shiprocket?.shipment_id
+          ) {
+            await attachShipmentToOrderService({
+              orderId,
+              shiprocketOrderId:
+                shiprocket?.order_id ||
+                null,
+              shipmentId:
+                shiprocket?.shipment_id ||
+                null,
+              awbCode:
+                shiprocket?.awb_code ||
+                null,
+            });
+          }
+        } catch (shipErr) {
+          console.error(
+            "❌ Shiprocket Integration Failed:",
+            {
+              message:
+                shipErr.message,
+              details:
+                shipErr.details ||
+                shipErr?.response
+                  ?.data,
+            }
           );
-
-        /* =====================================
-           🔗 ATTACH SHIPMENT DETAILS
-        ===================================== */
-
-        if (
-          shiprocket?.order_id ||
-          shiprocket?.shipment_id
-        ) {
-
-          await attachShipmentToOrderService({
-            orderId,
-
-            shiprocketOrderId:
-              shiprocket?.order_id ||
-              null,
-
-            shipmentId:
-              shiprocket?.shipment_id ||
-              null,
-
-            awbCode:
-              shiprocket?.awb_code ||
-              null,
-          });
         }
 
-      } catch (shipErr) {
+        try {
+          await queueOrderCreatedEvent({
+            order: {
+              orderId,
+              orderNumber,
+              totalAmount,
+              deliveryDate,
+              shipmentId:
+                shiprocket?.shipment_id,
+              shiprocketOrderId:
+                shiprocket?.order_id,
+            },
+            user: req.user,
+          });
+        } catch (automationErr) {
+          console.error(
+            "⚠️ Order automation failed:",
+            automationErr.message
+          );
+        }
 
-        console.error(
-          "❌ Shiprocket Integration Failed:",
-          {
-            message:
-              shipErr.message,
+        try {
+          await logUserActivity({
+            userId,
+            action:
+              `Placed order #${orderId}`,
+          });
+        } catch (logErr) {
+          console.error(
+            "⚠️ Activity log failed:",
+            logErr.message
+          );
+        }
 
-            details:
-              shipErr.details ||
-              shipErr?.response
-                ?.data,
-          }
-        );
+        return shiprocket;
+      };
 
-        // 🚨 IMPORTANT:
-        // DO NOT FAIL ORDER
-        // Local order already exists
-      }
-
-      /* =========================================
-   🤖 AUTOMATION EVENT
-========================================= */
-
-try {
-  await queueOrderCreatedEvent({
-    order: {
-      orderId,
-      orderNumber,
-
-      totalAmount,
-
-      deliveryDate,
-
-      shipmentId:
-        shiprocket?.shipment_id,
-
-      shiprocketOrderId:
-        shiprocket?.order_id,
-    },
-
-    user: req.user,
-  });
-} catch (automationErr) {
-  console.error(
-    "⚠️ Order automation failed:",
-    automationErr.message
-  );
-
-  // NON-BLOCKING
-}
-
-      /* =========================================
-         📝 USER ACTIVITY LOG
-      ========================================= */
-
+      // Allow quick attempt (up to 2000ms) for fast Shiprocket responses,
+      // but never block or fail the order response if 3rd party is slow.
+      let shiprocket = null;
       try {
-
-        await logUserActivity({
-          userId,
-
-          action:
-            `Placed order #${orderId}`,
-        });
-
-      } catch (logErr) {
-
-        console.error(
-          "⚠️ Activity log failed:",
-          logErr.message
+        const quickTimeout = new Promise((resolve) =>
+          setTimeout(() => resolve(null), 2000)
         );
-
-        // NON-BLOCKING
+        shiprocket = await Promise.race([
+          runPostOrderTasks(),
+          quickTimeout,
+        ]);
+      } catch (postErr) {
+        console.warn("⚠️ Post-order processing error:", postErr.message);
       }
 
       /* =========================================
