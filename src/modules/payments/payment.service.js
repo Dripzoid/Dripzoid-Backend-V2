@@ -1,5 +1,6 @@
 // src/modules/payments/payment.service.js
 
+import prisma from "../../lib/prisma.js";
 import { AppError } from "../../errors/AppError.js";
 
 import {
@@ -10,6 +11,11 @@ import {
 } from "../../integrations/razorpay/razorpay.service.js";
 
 import { createShiprocketOrder } from "../../integrations/shiprocket/shiprocket.service.js";
+
+import {
+  reserveProductStock,
+  reserveProductSizeStock,
+} from "../orders/order.service.js";
 
 import {
   createPaymentOrder,
@@ -356,12 +362,26 @@ export async function createRazorpayOrderService({
    ✅ VERIFY PAYMENT
 ===================================================== */
 
-export async function verifyPaymentService({
-  razorpay_payment_id,
-  razorpay_order_id,
-  razorpay_signature,
-  internalOrderId,
-}) {
+export async function verifyPaymentService(
+  {
+    razorpay_payment_id,
+    razorpay_order_id,
+    razorpay_signature,
+    internalOrderId,
+  },
+  deps = {}
+) {
+  const _verifyPaymentSignature = deps.verifyPaymentSignature ?? verifyPaymentSignature;
+  const _fetchPayment = deps.fetchPayment ?? fetchPayment;
+  const _getOrderByPaymentId = deps.getOrderByPaymentId ?? getOrderByPaymentId;
+  const _getOrderById = deps.getOrderById ?? getOrderById;
+  const _getOrderItems = deps.getOrderItems ?? getOrderItems;
+  const _confirmPayment = deps.confirmPayment ?? confirmPayment;
+  const _createShiprocketOrder = deps.createShiprocketOrder ?? createShiprocketOrder;
+  const _prisma = deps.prisma ?? prisma;
+  const _reserveProductStock = deps.reserveProductStock ?? reserveProductStock;
+  const _reserveProductSizeStock = deps.reserveProductSizeStock ?? reserveProductSizeStock;
+
   /*
    * Validate required Razorpay fields.
    */
@@ -380,7 +400,7 @@ export async function verifyPaymentService({
    * Verify Razorpay signature.
    */
   const isValid =
-    verifyPaymentSignature({
+    _verifyPaymentSignature({
       razorpay_order_id,
       razorpay_payment_id,
       razorpay_signature,
@@ -397,7 +417,7 @@ export async function verifyPaymentService({
    * Fetch payment directly from Razorpay.
    */
   const payment =
-    await fetchPayment(
+    await _fetchPayment(
       razorpay_payment_id
     );
 
@@ -424,11 +444,6 @@ export async function verifyPaymentService({
 
   /*
    * Resolve internal Dripzoid order ID.
-   *
-   * Flutter can send internalOrderId.
-   *
-   * Razorpay notes also contain internalOrderId,
-   * which acts as a fallback.
    */
   const notes =
     payment.notes || {};
@@ -446,43 +461,45 @@ export async function verifyPaymentService({
   }
 
   /*
-   * Idempotency:
-   *
-   * If this Razorpay payment has already
-   * been processed, don't create another
-   * Shiprocket order or modify the order again.
+   * Strict Idempotency Check 1:
+   * Has this Razorpay payment ID already been processed into an order?
    */
   const alreadyProcessed =
-    await getOrderByPaymentId(
+    await _getOrderByPaymentId(
       razorpay_payment_id
     );
 
-  if (
-    alreadyProcessed?.status ===
-    "Confirmed"
-  ) {
-    return {
-      message:
-        "Already processed",
+  if (alreadyProcessed) {
+    if (alreadyProcessed.status === "Confirmed") {
+      return {
+        message: "Payment already verified",
+        internalOrderId: alreadyProcessed.id,
+        orderNumber: alreadyProcessed.orderNumber,
+        shiprocketOrderId:
+          safeJsonParse(alreadyProcessed.paymentDetails)?.shiprocketOrderId ?? null,
+        status: "Confirmed",
+        alreadyProcessed: true,
+      };
+    }
 
-      internalOrderId:
-        alreadyProcessed.id,
-
-      shiprocketOrderId:
-        alreadyProcessed
-          .shiprocketOrderId ??
-        null,
-
-      status:
-        "Confirmed",
-    };
+    if (alreadyProcessed.status === "NeedsReconciliation") {
+      return {
+        message: "Payment captured, awaiting manual inventory reconciliation",
+        internalOrderId: alreadyProcessed.id,
+        orderNumber: alreadyProcessed.orderNumber,
+        status: "NeedsReconciliation",
+        alreadyProcessed: true,
+        reconciliationRequired: true,
+      };
+    }
   }
 
   /*
-   * Get the internal Dripzoid order.
+   * Strict Idempotency Check 2:
+   * Get the internal Dripzoid order by ID.
    */
   const order =
-    await getOrderById(
+    await _getOrderById(
       orderId
     );
 
@@ -493,37 +510,30 @@ export async function verifyPaymentService({
     );
   }
 
-  /*
-   * Prevent duplicate confirmation.
-   */
-  if (
-    order.status ===
-    "Confirmed"
-  ) {
+  if (order.status === "Confirmed") {
     return {
-      message:
-        "Already processed",
-
-      internalOrderId:
-        order.id,
-
+      message: "Order already confirmed",
+      internalOrderId: order.id,
+      orderNumber: order.orderNumber,
       shiprocketOrderId:
-        order.shiprocketOrderId ??
-        null,
-
-      status:
-        "Confirmed",
+        safeJsonParse(order.paymentDetails)?.shiprocketOrderId ?? null,
+      status: "Confirmed",
+      alreadyProcessed: true,
     };
   }
 
-  /*
-   * Expired pending orders cannot
-   * be paid/confirmed.
-   */
-  if (
-    order.status ===
-    "Expired"
-  ) {
+  if (order.status === "NeedsReconciliation") {
+    return {
+      message: "Payment captured, awaiting manual inventory reconciliation",
+      internalOrderId: order.id,
+      orderNumber: order.orderNumber,
+      status: "NeedsReconciliation",
+      alreadyProcessed: true,
+      reconciliationRequired: true,
+    };
+  }
+
+  if (order.status === "Expired") {
     throw new AppError(
       "Order expired",
       410
@@ -534,13 +544,12 @@ export async function verifyPaymentService({
    * Fetch order items.
    */
   const items =
-    await getOrderItems(
+    await _getOrderItems(
       orderId
     );
 
   /*
-   * Shipping information stored
-   * with the pending order.
+   * Shipping information stored with the pending order.
    */
   const shipping =
     safeJsonParse(
@@ -548,12 +557,85 @@ export async function verifyPaymentService({
       {}
     ) || {};
 
-  let shiprocketOrder =
-    null;
+  /* =================================================
+     📦 ATOMIC INVENTORY ALLOCATION
+  ================================================= */
+  let inventoryFailure = null;
+
+  try {
+    for (const item of items) {
+      if (!item.productId) continue;
+
+      const product = await _prisma.product.findUnique({
+        where: { id: item.productId },
+        select: { id: true, name: true, stock: true },
+      });
+
+      if (!product) {
+        throw new AppError(`Product ${item.productId} not found during fulfillment`, 404);
+      }
+
+      if (item.selectedSize) {
+        await _reserveProductSizeStock(
+          _prisma,
+          item.productId,
+          item.selectedSize,
+          item.quantity
+        );
+      }
+
+      await _reserveProductStock(
+        _prisma,
+        product,
+        item.quantity
+      );
+    }
+  } catch (invErr) {
+    inventoryFailure = invErr;
+    console.error("⚠️ Inventory allocation failed for captured payment:", invErr.message);
+  }
 
   /* =================================================
-     🚚 CREATE SHIPROCKET ORDER
+     ⚠️ HANDLE INVENTORY ALLOCATION FAILURE (Captured Payment)
+     If inventory cannot be reserved, customer payment has already
+     been captured by Razorpay. Do NOT treat payment as failed or
+     ask customer to pay again. Record captured state and flag for
+     manual reconciliation.
   ================================================= */
+  if (inventoryFailure) {
+    const existingDetails = safeJsonParse(order.paymentDetails, {}) || {};
+    await _prisma.order.update({
+      where: { id: orderId },
+      data: {
+        status: "NeedsReconciliation",
+        razorpayPaymentId: razorpay_payment_id,
+        paymentDetails: {
+          ...existingDetails,
+          razorpayPaymentId: razorpay_payment_id,
+          razorpayOrderId: razorpay_order_id,
+          paymentStatus: payment.status,
+          reconciliationRequired: true,
+          inventoryError: inventoryFailure.message,
+          reconciliationNote: "Payment captured, but stock decrement failed. Manual inventory or refund reconciliation required.",
+          capturedAt: new Date().toISOString(),
+        },
+      },
+    });
+
+    return {
+      message: "Payment captured, but inventory allocation requires manual reconciliation",
+      internalOrderId: orderId,
+      orderNumber: order.orderNumber,
+      status: "NeedsReconciliation",
+      reconciliationRequired: true,
+      error: inventoryFailure.message,
+    };
+  }
+
+  /* =================================================
+     🚚 CREATE SHIPROCKET ORDER (Non-blocking)
+  ================================================= */
+  let shiprocketOrder = null;
 
   try {
     const addressLine =
@@ -567,7 +649,7 @@ export async function verifyPaymentService({
       "N/A";
 
     shiprocketOrder =
-      await createShiprocketOrder({
+      await _createShiprocketOrder({
         order_id:
           `ORDER-${orderId}`,
 
@@ -578,8 +660,7 @@ export async function verifyPaymentService({
             .replace("T", " "),
 
         pickup_location:
-          process.env
-            .SHIPROCKET_PICKUP ||
+          process.env.SHIPROCKET_PICKUP ||
           "PRIMARY",
 
         billing_customer_name:
@@ -666,78 +747,28 @@ export async function verifyPaymentService({
   /* =================================================
      💾 CONFIRM PAYMENT
   ================================================= */
-
-  console.log(
-    "💾 Saving Shiprocket Order ID:",
-    shiprocketOrder?.order_id
-  );
-
-  await confirmPayment({
+  await _confirmPayment({
     orderId,
-
     paymentId:
       razorpay_payment_id,
-
     shiprocketOrderId:
       shiprocketOrder?.order_id ||
       null,
-
     status:
       "Confirmed",
   });
 
   /* =================================================
-     📦 RESERVE STOCK & CLEAR CART
+     🛒 CART CLEANUP (Only upon successful confirmation)
   ================================================= */
-  try {
-    for (const item of items) {
-      if (item.productId) {
-        const prod = await prisma.product.findUnique({
-          where: { id: item.productId },
-          select: { id: true, stock: true },
-        });
-
-        if (prod && prod.stock !== null) {
-          await prisma.product.updateMany({
-            where: { id: prod.id, stock: { gte: item.quantity } },
-            data: {
-              stock: { decrement: item.quantity },
-              sold: { increment: item.quantity },
-            },
-          });
-        }
-
-        if (item.selectedSize) {
-          const reqSize = String(item.selectedSize).trim().toLowerCase();
-          const pSizes = await prisma.productSize.findMany({
-            where: { productId: item.productId },
-            select: { id: true, size: true, stock: true },
-          });
-
-          const matchedSize = pSizes.find(
-            (ps) => ps.size && ps.size.trim().toLowerCase() === reqSize
-          );
-
-          if (matchedSize && (matchedSize.stock || 0) >= item.quantity) {
-            await prisma.productSize.updateMany({
-              where: { id: matchedSize.id, stock: { gte: item.quantity } },
-              data: { stock: { decrement: item.quantity } },
-            });
-          }
-        }
-      }
-    }
-
-    if (order.userId) {
-      await prisma.cartItem.deleteMany({
+  if (order.userId) {
+    try {
+      await _prisma.cartItem.deleteMany({
         where: { userId: order.userId },
       });
+    } catch (cartErr) {
+      console.warn("⚠️ Could not clear cart after payment confirmation:", cartErr.message);
     }
-  } catch (postPayErr) {
-    console.warn(
-      "⚠️ Post-payment stock/cart update non-fatal error:",
-      postPayErr.message
-    );
   }
 
   return {
@@ -746,6 +777,9 @@ export async function verifyPaymentService({
 
     internalOrderId:
       orderId,
+
+    orderNumber:
+      order.orderNumber,
 
     shiprocketOrderId:
       shiprocketOrder?.order_id ||

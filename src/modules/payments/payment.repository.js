@@ -274,6 +274,17 @@ export async function confirmPayment({
     );
   }
 
+  const existingDetails =
+    typeof existingOrder.paymentDetails === "object" && existingOrder.paymentDetails !== null
+      ? existingOrder.paymentDetails
+      : {};
+
+  const updatedDetails = {
+    ...existingDetails,
+    shiprocketOrderId: shiprocketOrderId || null,
+    confirmedAt: new Date().toISOString(),
+  };
+
   return prisma.order.update({
     where: {
       id: orderId,
@@ -285,8 +296,8 @@ export async function confirmPayment({
       razorpayPaymentId:
         paymentId,
 
-      shiprocketOrderId:
-        shiprocketOrderId || null,
+      paymentDetails:
+        updatedDetails,
     },
   });
 }

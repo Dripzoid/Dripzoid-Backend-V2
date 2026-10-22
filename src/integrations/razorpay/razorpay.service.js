@@ -20,16 +20,26 @@ function assertRazorpayConfig() {
   }
 }
 
-assertRazorpayConfig();
+let _razorpayInstance = null;
 
-/* =====================================================
-   💳 RAZORPAY CLIENT
-===================================================== */
+export function getRazorpayClient() {
+  assertRazorpayConfig();
+  if (!_razorpayInstance) {
+    _razorpayInstance = new Razorpay({
+      key_id: process.env.RAZORPAY_KEY_ID,
+      key_secret: process.env.RAZORPAY_KEY_SECRET,
+    });
+  }
+  return _razorpayInstance;
+}
 
-export const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET,
-});
+export const razorpay =
+  process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET
+    ? new Razorpay({
+        key_id: process.env.RAZORPAY_KEY_ID,
+        key_secret: process.env.RAZORPAY_KEY_SECRET,
+      })
+    : null;
 
 /* =====================================================
    HELPERS
@@ -68,7 +78,8 @@ export async function createRazorpayOrder({
   notes = {},
 }) {
   try {
-    return await razorpay.orders.create({
+    const client = getRazorpayClient();
+    return await client.orders.create({
       amount,
       currency: "INR",
       receipt,
@@ -97,6 +108,7 @@ export function verifyPaymentSignature({
   razorpay_payment_id,
   razorpay_signature,
 }) {
+  if (!process.env.RAZORPAY_KEY_SECRET) return false;
   const expected = crypto
     .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
     .update(`${razorpay_order_id}|${razorpay_payment_id}`)
@@ -111,7 +123,8 @@ export function verifyPaymentSignature({
 
 export async function fetchPayment(paymentId) {
   try {
-    return await razorpay.payments.fetch(paymentId);
+    const client = getRazorpayClient();
+    return await client.payments.fetch(paymentId);
   } catch (err) {
     const details = toErrorDetails(err);
 

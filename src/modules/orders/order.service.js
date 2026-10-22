@@ -146,15 +146,34 @@ function toNullableDate(value) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+let transactionSupportVerified = null;
+
+export function setTransactionSupportForTesting(val) {
+  transactionSupportVerified = val;
+}
+
+export function resetTransactionSupportCache() {
+  transactionSupportVerified = null;
+}
+
 /**
- * Execute action in a Prisma transaction, or fall back to non-transactional execution
- * if the underlying MongoDB deployment does not support transactions (e.g. standalone/unreplicated).
+ * Checks whether the configured database deployment supports transactions.
+ * Tests with a minimal no-op probe to avoid side effects or data loss.
  */
-export async function executeWithTransaction(action) {
+export async function isTransactionSupported(db = prisma) {
+  if (transactionSupportVerified !== null) {
+    return transactionSupportVerified;
+  }
+
+  if (typeof db?.$transaction !== "function") {
+    transactionSupportVerified = false;
+    return false;
+  }
+
   try {
-    return await prisma.$transaction(async (tx) => {
-      return await action(tx);
-    });
+    await db.$transaction(async () => true);
+    transactionSupportVerified = true;
+    return true;
   } catch (err) {
     const msg = String(err?.message || "");
     if (
@@ -162,17 +181,36 @@ export async function executeWithTransaction(action) {
       msg.includes("Transactions are not supported") ||
       msg.includes("replica set")
     ) {
-      console.warn("⚠️ Transaction not supported on database deployment. Falling back to non-transactional execution.");
-      return await action(prisma);
+      console.warn("⚠️ Database deployment does not support transactions. Operating in safe non-transactional mode.");
+      transactionSupportVerified = false;
+      return false;
     }
+    // For non-deployment errors (e.g. temporary network blips), rethrow
     throw err;
   }
+}
+
+/**
+ * Execute action in a Prisma transaction if supported, or directly on the database client.
+ * If a transaction is supported and fails, it is aborted and rolled back by the database engine.
+ * Under NO circumstances is a failed transaction callback rerun outside the transaction.
+ */
+export async function executeWithTransaction(action, db = prisma) {
+  const supported = await isTransactionSupported(db);
+
+  if (supported) {
+    return await db.$transaction(async (tx) => {
+      return await action(tx);
+    });
+  }
+
+  return await action(db);
 }
 
 function normalizeOrderItemInput(item) {
   const productId = item.product_id || item.productId;
   const quantity = toSafeNumber(item.quantity, 0);
-  const unitPrice = toSafeNumber(item.unit_price ?? item.unitPrice, 0);
+  const unitPrice = toSafeNumber(item.unit_price ?? item.unitPrice ?? item.price, 0);
 
   if (!productId) {
     throw new AppError("Each order item must have a productId", 400);
@@ -195,51 +233,76 @@ function normalizeOrderItemInput(item) {
   };
 }
 
-async function reserveProductStock(tx, product, quantity) {
-  if (!product) return;
+export async function reserveProductStock(tx, product, quantity) {
+  if (!product || !product.id) {
+    throw new AppError("Product is required for stock reservation", 400);
+  }
 
-  if (product.stock !== null) {
+  const qty = Number(quantity);
+  if (!qty || qty <= 0) {
+    throw new AppError(`Invalid reservation quantity for product ${product.id}`, 400);
+  }
+
+  if (product.stock !== null && product.stock !== undefined) {
     const updated = await tx.product.updateMany({
       where: {
         id: product.id,
         stock: {
-          gte: quantity,
+          gte: qty,
         },
       },
       data: {
         stock: {
-          decrement: quantity,
+          decrement: qty,
         },
         sold: {
-          increment: quantity,
+          increment: qty,
         },
       },
     });
 
     if (updated.count === 0) {
-      throw new AppError(`Insufficient stock for product ${product.id}`, 409);
+      throw new AppError(
+        `Insufficient stock for product "${product.name || product.id}". Available: ${product.stock}, requested: ${qty}`,
+        409
+      );
     }
 
-    return;
+    return { productId: product.id, quantity: qty };
   }
 
-  await tx.product.update({
+  const updated = await tx.product.updateMany({
     where: { id: product.id },
     data: {
       sold: {
-        increment: quantity,
+        increment: qty,
       },
     },
   });
+
+  if (updated.count === 0) {
+    throw new AppError(`Product ${product.id} not found`, 404);
+  }
+
+  return { productId: product.id, quantity: qty };
 }
 
-async function reserveProductSizeStock(
+export async function reserveProductSizeStock(
   tx,
   productId,
   selectedSize,
   quantity
 ) {
-  if (!selectedSize) return;
+  if (!selectedSize) return null;
+
+  if (!productId) {
+    throw new AppError("productId is required for size stock reservation", 400);
+  }
+
+  const qty = Number(quantity);
+  if (!qty || qty <= 0) {
+    throw new AppError(`Invalid size reservation quantity for product ${productId}`, 400);
+  }
 
   const productSizes = await tx.productSize.findMany({
     where: { productId },
@@ -250,28 +313,54 @@ async function reserveProductSizeStock(
     },
   });
 
-  if (!productSizes || productSizes.length === 0) return;
+  if (!productSizes || productSizes.length === 0) {
+    throw new AppError(
+      `Product ${productId} does not have size options configured, but size "${selectedSize}" was requested`,
+      400
+    );
+  }
 
   const reqSize = String(selectedSize).trim().toLowerCase();
   const matched = productSizes.find(
     (ps) => ps.size && ps.size.trim().toLowerCase() === reqSize
   );
 
-  if (matched && (matched.stock || 0) >= quantity) {
-    await tx.productSize.updateMany({
+  if (!matched) {
+    throw new AppError(
+      `Size "${selectedSize}" not found for product ${productId}`,
+      400
+    );
+  }
+
+  const anySizeHasStock = productSizes.some((ps) => (ps.stock || 0) > 0);
+
+  if (anySizeHasStock) {
+    const updated = await tx.productSize.updateMany({
       where: {
         id: matched.id,
         stock: {
-          gte: quantity,
+          gte: qty,
         },
       },
       data: {
         stock: {
-          decrement: quantity,
+          decrement: qty,
         },
       },
     });
+
+    if (updated.count === 0) {
+      throw new AppError(
+        `Insufficient stock for size "${matched.size}". Available: ${matched.stock}, requested: ${qty}`,
+        409
+      );
+    }
+
+    return { productSizeId: matched.id, size: matched.size, quantity: qty };
   }
+
+  // Legacy catalog support where size labels exist with default 0 stock, but master product.stock is tracked
+  return { productSizeId: matched.id, size: matched.size, quantity: 0 };
 }
 
 function buildOrderItemView(item) {
@@ -332,15 +421,211 @@ function buildOrderView(order) {
    🚀 CREATE ORDER
 ===================================================== */
 
-export async function createOrderService({
+async function executeOrderCreation(tx, {
   userId,
-  items,
+  normalizedItems,
   shippingAddress,
   paymentMethod,
   paymentDetails,
-  totalAmount,
   deliveryDate,
+  onProgress,
 }) {
+  let computedTotal = 0;
+
+  for (const item of normalizedItems) {
+    const product = await tx.product.findUnique({
+      where: { id: item.productId },
+      select: { id: true, stock: true, sold: true, name: true },
+    });
+
+    if (!product) {
+      throw new AppError(`Product ${item.productId} not found`, 404);
+    }
+
+    if (product.stock !== null && product.stock < item.quantity) {
+      throw new AppError(
+        `Insufficient stock for product "${product.name || item.productId}". Available: ${product.stock}, requested: ${item.quantity}`,
+        409
+      );
+    }
+
+    if (item.selectedSize) {
+      const productSizes = await tx.productSize.findMany({
+        where: { productId: item.productId },
+        select: { id: true, size: true, stock: true },
+      });
+
+      if (!productSizes || productSizes.length === 0) {
+        throw new AppError(
+          `Product "${product.name || item.productId}" does not have size options configured, but size "${item.selectedSize}" was requested`,
+          400
+        );
+      }
+
+      const reqSize = String(item.selectedSize).trim().toLowerCase();
+      const matched = productSizes.find(
+        (ps) => ps.size && ps.size.trim().toLowerCase() === reqSize
+      );
+
+      const anySizeHasStock = productSizes.some(
+        (ps) => (ps.stock || 0) > 0
+      );
+
+      if (!matched) {
+        throw new AppError(
+          `Size "${item.selectedSize}" not found for product "${product.name || item.productId}"`,
+          400
+        );
+      } else if (anySizeHasStock) {
+        if ((matched.stock || 0) < item.quantity) {
+          throw new AppError(
+            `Insufficient stock for size "${matched.size}". Available: ${matched.stock}, requested: ${item.quantity}`,
+            409
+          );
+        }
+      }
+    }
+
+    computedTotal += item.unitPrice * item.quantity;
+  }
+
+  const orderNumberPlaceholder = generateTemporaryOrderNumber();
+
+  const finalTotal =
+    computedTotal +
+    (String(paymentMethod).toUpperCase() === "COD" ? 25 : 0);
+
+  // Validate if shippingAddress.id actually exists in Address table to avoid relation constraint failures
+  let validAddressId = null;
+  if (shippingAddress?.id) {
+    try {
+      const existingAddress = await tx.address.findFirst({
+        where: {
+          id: String(shippingAddress.id).trim(),
+          userId,
+        },
+        select: { id: true },
+      });
+      if (existingAddress) {
+        validAddressId = existingAddress.id;
+      }
+    } catch (addrErr) {
+      console.warn("⚠️ Could not verify addressId relation:", addrErr.message);
+    }
+  }
+
+  const order = await tx.order.create({
+    data: {
+      userId,
+      orderNumber: orderNumberPlaceholder,
+      addressId: validAddressId,
+      shippingAddress: shippingAddress ?? {},
+      paymentMethod: paymentMethod ?? null,
+      paymentDetails: paymentDetails ?? {},
+      totalAmount: finalTotal,
+      status: "Confirmed",
+      deliveryDate: toNullableDate(deliveryDate),
+    },
+  });
+
+  if (onProgress) {
+    onProgress({ type: "orderCreated", orderId: order.id });
+  }
+
+  const finalOrderNumber = generateOrderNumber(order.id);
+
+  const updatedOrder = await tx.order.update({
+    where: { id: order.id },
+    data: { orderNumber: finalOrderNumber },
+  });
+
+  for (const item of normalizedItems) {
+    const lineTotal = item.unitPrice * item.quantity;
+
+    const orderItem = await tx.orderItem.create({
+      data: {
+        orderId: updatedOrder.id,
+        productId: item.productId,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        price: lineTotal,
+        selectedColor: item.selectedColor,
+        selectedSize: item.selectedSize,
+      },
+    });
+
+    if (onProgress) {
+      onProgress({ type: "orderItemCreated", orderItemId: orderItem.id });
+    }
+
+    const existingProduct = await tx.product.findUnique({
+      where: { id: item.productId },
+      select: { id: true, stock: true, sold: true, name: true },
+    });
+
+    if (!existingProduct) {
+      throw new AppError(`Product ${item.productId} not found`, 404);
+    }
+
+    if (item.selectedSize) {
+      const sizeReservation = await reserveProductSizeStock(
+        tx,
+        item.productId,
+        item.selectedSize,
+        item.quantity
+      );
+      if (onProgress && sizeReservation?.productSizeId && sizeReservation.quantity > 0) {
+        onProgress({
+          type: "sizeStockReserved",
+          productSizeId: sizeReservation.productSizeId,
+          quantity: sizeReservation.quantity,
+        });
+      }
+    }
+
+    const prodReservation = await reserveProductStock(
+      tx,
+      existingProduct,
+      item.quantity
+    );
+    if (onProgress && prodReservation?.productId) {
+      onProgress({
+        type: "productStockReserved",
+        productId: prodReservation.productId,
+        quantity: prodReservation.quantity,
+      });
+    }
+  }
+
+  // Clear cart only after all items and inventory decrements succeeded
+  try {
+    await tx.cartItem.deleteMany({
+      where: { userId },
+    });
+  } catch (cartErr) {
+    console.warn("⚠️ Could not clear cart after order:", cartErr.message);
+  }
+
+  return {
+    orderId: updatedOrder.id,
+    orderNumber: finalOrderNumber,
+  };
+}
+
+export async function createOrderService(
+  {
+    userId,
+    items,
+    shippingAddress,
+    paymentMethod,
+    paymentDetails,
+    totalAmount,
+    deliveryDate,
+  },
+  deps = {}
+) {
+  const db = deps.prisma || prisma;
+
   if (!userId) {
     throw new AppError("userId is required", 401);
   }
@@ -351,167 +636,98 @@ export async function createOrderService({
 
   const normalizedItems = items.map(normalizeOrderItemInput);
 
-  return executeWithTransaction(async (tx) => {
-    let computedTotal = 0;
+  const supported = await isTransactionSupported(db);
 
-    for (const item of normalizedItems) {
-      const product = await tx.product.findUnique({
-        where: { id: item.productId },
-        select: { id: true, stock: true, sold: true, name: true },
-      });
-
-      if (!product) {
-        throw new AppError(`Product ${item.productId} not found`, 404);
-      }
-
-      if (product.stock !== null && product.stock < item.quantity) {
-        throw new AppError(
-          `Insufficient stock for product "${product.name || item.productId}". Available: ${product.stock}, requested: ${item.quantity}`,
-          409
-        );
-      }
-
-      if (item.selectedSize) {
-        const productSizes = await tx.productSize.findMany({
-          where: { productId: item.productId },
-          select: { id: true, size: true, stock: true },
-        });
-
-        if (productSizes && productSizes.length > 0) {
-          const reqSize = String(item.selectedSize).trim().toLowerCase();
-          const matched = productSizes.find(
-            (ps) => ps.size && ps.size.trim().toLowerCase() === reqSize
-          );
-
-          const anySizeHasStock = productSizes.some(
-            (ps) => (ps.stock || 0) > 0
-          );
-
-          if (!matched) {
-            if (anySizeHasStock) {
-              throw new AppError(
-                `Size "${item.selectedSize}" not found for product "${product.name || item.productId}"`,
-                400
-              );
-            }
-          } else if ((matched.stock || 0) > 0) {
-            if (matched.stock < item.quantity) {
-              throw new AppError(
-                `Insufficient stock for size "${matched.size}". Available: ${matched.stock}, requested: ${item.quantity}`,
-                409
-              );
-            }
-          } else if (anySizeHasStock) {
-            throw new AppError(
-              `Size "${matched.size}" is out of stock`,
-              409
-            );
-          }
-        }
-      }
-
-      computedTotal += item.unitPrice * item.quantity;
-    }
-
-    const orderNumberPlaceholder = generateTemporaryOrderNumber();
-
-    const finalTotal =
-      computedTotal +
-      (String(paymentMethod).toUpperCase() === "COD" ? 25 : 0);
-
-    // Validate if shippingAddress.id actually exists in Address table to avoid relation constraint failures
-    let validAddressId = null;
-    if (shippingAddress?.id) {
-      try {
-        const existingAddress = await tx.address.findFirst({
-          where: {
-            id: String(shippingAddress.id).trim(),
-            userId,
-          },
-          select: { id: true },
-        });
-        if (existingAddress) {
-          validAddressId = existingAddress.id;
-        }
-      } catch (addrErr) {
-        console.warn("⚠️ Could not verify addressId relation:", addrErr.message);
-      }
-    }
-
-    const order = await tx.order.create({
-      data: {
+  if (supported) {
+    // When transactions are supported, execute inside transaction.
+    // Database engine guarantees atomic abort and rollback on error.
+    // NEVER catch the error and retry outside transaction!
+    return await db.$transaction(async (tx) => {
+      return await executeOrderCreation(tx, {
         userId,
-        orderNumber: orderNumberPlaceholder,
-        addressId: validAddressId,
-        shippingAddress: shippingAddress ?? {},
-        paymentMethod: paymentMethod ?? null,
-        paymentDetails: paymentDetails ?? {},
-        totalAmount: finalTotal,
-        status: "Confirmed",
-        deliveryDate: toNullableDate(deliveryDate),
-      },
-    });
-
-    const finalOrderNumber = generateOrderNumber(order.id);
-
-    const updatedOrder = await tx.order.update({
-      where: { id: order.id },
-      data: { orderNumber: finalOrderNumber },
-    });
-
-    for (const item of normalizedItems) {
-      const lineTotal = item.unitPrice * item.quantity;
-
-      await tx.orderItem.create({
-        data: {
-          orderId: updatedOrder.id,
-          productId: item.productId,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          price: lineTotal,
-          selectedColor: item.selectedColor,
-          selectedSize: item.selectedSize,
-        },
+        normalizedItems,
+        shippingAddress,
+        paymentMethod,
+        paymentDetails,
+        deliveryDate,
       });
+    });
+  }
 
-      const existingProduct = await tx.product.findUnique({
-        where: { id: item.productId },
-        select: { id: true, stock: true, sold: true },
-      });
+  // Explicit compensating recovery strategy for deployments without transaction support
+  let createdOrderId = null;
+  const createdOrderItemIds = [];
+  const reservedStockOps = [];
 
-      if (!existingProduct) {
-        throw new AppError(`Product ${item.productId} not found`, 404);
+  const onProgress = (evt) => {
+    if (evt.type === "orderCreated") {
+      createdOrderId = evt.orderId;
+    } else if (evt.type === "orderItemCreated") {
+      createdOrderItemIds.push(evt.orderItemId);
+    } else if (evt.type === "sizeStockReserved") {
+      reservedStockOps.push({ type: "size", id: evt.productSizeId, quantity: evt.quantity });
+    } else if (evt.type === "productStockReserved") {
+      reservedStockOps.push({ type: "product", id: evt.productId, quantity: evt.quantity });
+    }
+  };
+
+  try {
+    return await executeOrderCreation(db, {
+      userId,
+      normalizedItems,
+      shippingAddress,
+      paymentMethod,
+      paymentDetails,
+      deliveryDate,
+      onProgress,
+    });
+  } catch (err) {
+    console.warn("⚠️ Order creation failed in non-transactional mode. Executing compensating rollback:", err.message);
+
+    // 1. Rollback reserved stock in reverse order
+    for (const op of reservedStockOps.reverse()) {
+      try {
+        if (op.type === "size") {
+          await db.productSize.update({
+            where: { id: op.id },
+            data: { stock: { increment: op.quantity } },
+          });
+        } else if (op.type === "product") {
+          await db.product.update({
+            where: { id: op.id },
+            data: {
+              stock: { increment: op.quantity },
+              sold: { decrement: op.quantity },
+            },
+          });
+        }
+      } catch (stockRollbackErr) {
+        console.error(`⚠️ Failed to compensate stock for ${op.type} ${op.id}:`, stockRollbackErr.message);
       }
-
-      if (item.selectedSize) {
-        await reserveProductSizeStock(
-          tx,
-          item.productId,
-          item.selectedSize,
-          item.quantity
-        );
-      }
-
-      await reserveProductStock(
-        tx,
-        existingProduct,
-        item.quantity
-      );
     }
 
-    try {
-      await tx.cartItem.deleteMany({
-        where: { userId },
-      });
-    } catch (cartErr) {
-      console.warn("⚠️ Could not clear cart after order:", cartErr.message);
+    // 2. Rollback created order items
+    if (createdOrderId) {
+      try {
+        await db.orderItem.deleteMany({
+          where: { orderId: createdOrderId },
+        });
+      } catch (itemDelErr) {
+        console.error("⚠️ Failed to delete order items during compensation:", itemDelErr.message);
+      }
+
+      // 3. Rollback created order
+      try {
+        await db.order.delete({
+          where: { id: createdOrderId },
+        });
+      } catch (orderDelErr) {
+        console.error("⚠️ Failed to delete order during compensation:", orderDelErr.message);
+      }
     }
 
-    return {
-      orderId: updatedOrder.id,
-      orderNumber: finalOrderNumber,
-    };
-  });
+    throw err;
+  }
 }
 
 /* =====================================================
