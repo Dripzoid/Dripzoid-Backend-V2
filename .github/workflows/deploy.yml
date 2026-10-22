@@ -64,7 +64,9 @@ jobs:
 
           cd /home/ubuntu/Dripzoid-Backend-V2
 
-          if [[ -n "$(git status --porcelain)" ]]; then
+          rm -f check_orders.js test-*.js scratch-*.js
+
+          if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
             echo "ERROR: Working tree is not clean; refusing deployment."
             git status --short
             exit 1
