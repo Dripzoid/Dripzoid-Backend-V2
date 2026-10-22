@@ -409,14 +409,15 @@ export async function verifyPaymentService({
   }
 
   /*
-   * Payment must be captured before
+   * Payment must be captured or authorized before
    * confirming the Dripzoid order.
    */
   if (
-    payment.status !== "captured"
+    payment.status !== "captured" &&
+    payment.status !== "authorized"
   ) {
     throw new AppError(
-      "Payment not captured",
+      `Payment not completed (status: ${payment.status})`,
       400
     );
   }
@@ -684,6 +685,60 @@ export async function verifyPaymentService({
     status:
       "Confirmed",
   });
+
+  /* =================================================
+     📦 RESERVE STOCK & CLEAR CART
+  ================================================= */
+  try {
+    for (const item of items) {
+      if (item.productId) {
+        const prod = await prisma.product.findUnique({
+          where: { id: item.productId },
+          select: { id: true, stock: true },
+        });
+
+        if (prod && prod.stock !== null) {
+          await prisma.product.updateMany({
+            where: { id: prod.id, stock: { gte: item.quantity } },
+            data: {
+              stock: { decrement: item.quantity },
+              sold: { increment: item.quantity },
+            },
+          });
+        }
+
+        if (item.selectedSize) {
+          const reqSize = String(item.selectedSize).trim().toLowerCase();
+          const pSizes = await prisma.productSize.findMany({
+            where: { productId: item.productId },
+            select: { id: true, size: true, stock: true },
+          });
+
+          const matchedSize = pSizes.find(
+            (ps) => ps.size && ps.size.trim().toLowerCase() === reqSize
+          );
+
+          if (matchedSize && (matchedSize.stock || 0) >= item.quantity) {
+            await prisma.productSize.updateMany({
+              where: { id: matchedSize.id, stock: { gte: item.quantity } },
+              data: { stock: { decrement: item.quantity } },
+            });
+          }
+        }
+      }
+    }
+
+    if (order.userId) {
+      await prisma.cartItem.deleteMany({
+        where: { userId: order.userId },
+      });
+    }
+  } catch (postPayErr) {
+    console.warn(
+      "⚠️ Post-payment stock/cart update non-fatal error:",
+      postPayErr.message
+    );
+  }
 
   return {
     message:

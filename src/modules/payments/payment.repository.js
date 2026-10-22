@@ -123,6 +123,8 @@ export async function insertOrderItem({
   productId,
   quantity,
   unitPrice,
+  selectedColor = null,
+  selectedSize = null,
 }) {
   const product =
     await prisma.product.findUnique({
@@ -154,6 +156,10 @@ export async function insertOrderItem({
       unitPrice: price,
 
       price: qty * price,
+
+      selectedColor,
+
+      selectedSize,
     },
   });
 }
