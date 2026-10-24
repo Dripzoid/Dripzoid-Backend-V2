@@ -21,9 +21,11 @@ app.set("trust proxy", 1);
 ===================================================== */
 
 const defaultAllowedOrigins = [
-  "https://dripzoid-frontend.onrender.com",
+  "https://dripzoid.yuvatejasainadh.me",
+  "https://dripzoidv2.vercel.app",
   "https://dripzoid.com",
   "https://www.dripzoid.com",
+  "https://dripzoid-frontend.onrender.com",
   "https://askdrip-frontend.onrender.com",
   "https://ask.dripzoid.com",
   "http://localhost:3000",
@@ -33,33 +35,38 @@ const defaultAllowedOrigins = [
 ];
 
 const envClient = process.env.CLIENT_URL
-  ? process.env.CLIENT_URL.replace(/\/+$/, "")
-  : null;
+  ? process.env.CLIENT_URL.split(",")
+      .map((u) => u.trim().replace(/\/+$/, ""))
+      .filter(Boolean)
+  : [];
 
-const allowedOrigins =
-  envClient && !defaultAllowedOrigins.includes(envClient)
-    ? [...defaultAllowedOrigins, envClient]
-    : defaultAllowedOrigins;
-
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-      return callback(new Error(`Origin ${origin} not allowed by CORS`));
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "X-Requested-With",
-      "Accept",
-    ],
-  })
+const allowedOrigins = Array.from(
+  new Set([...defaultAllowedOrigins, ...envClient])
 );
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow non-browser requests (e.g. mobile apps, curl, server-to-server) without Origin header
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    // Disallow unauthorized origins without throwing an internal server error (HTTP 500)
+    return callback(null, false);
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "X-Requested-With",
+    "Accept",
+  ],
+  optionsSuccessStatus: 204,
+};
+
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 
 /* =====================================================
    📦 BODY PARSERS
