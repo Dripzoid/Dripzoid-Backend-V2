@@ -237,6 +237,8 @@ export const register = async (
       message:
         "User registered successfully",
 
+      token,
+
       sessionId,
 
       user,
@@ -337,6 +339,8 @@ export const login = async (
 
       message:
         "Login successful",
+
+      token,
 
       sessionId,
 
@@ -500,6 +504,8 @@ export const googleCallback = [
       ========================= */
 
       const allowedOrigins = [
+        "https://dripzoid.yuvatejasainadh.me",
+        "https://dripzoidv2.vercel.app",
         "https://dripzoid-frontend.onrender.com",
         "https://dripzoid.com",
         "https://www.dripzoid.com",
